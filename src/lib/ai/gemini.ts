@@ -1,0 +1,77 @@
+/**
+ * Gemini AI API client
+ * 
+ * Server-side only - handles communication with Google's Gemini API
+ */
+
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { PAGE_AWARE_CHAT_PROMPT, SEARCH_RANK_PROMPT } from './prompts';
+
+/**
+ * Get the Gemini API client instance
+ */
+function getGeminiClient() {
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY environment variable is not set');
+  }
+
+  return new GoogleGenerativeAI(apiKey);
+}
+
+/**
+ * Get the Gemini Pro model for chat
+ */
+export function getChatModel() {
+  const client = getGeminiClient();
+  return client.getGenerativeModel({
+    model: 'gemini-1.5-pro',
+    systemInstruction: PAGE_AWARE_CHAT_PROMPT,
+  });
+}
+
+/**
+ * Get the Gemini Pro model for search ranking
+ */
+export function getSearchModel() {
+  const client = getGeminiClient();
+  return client.getGenerativeModel({
+    model: 'gemini-1.5-pro',
+    systemInstruction: SEARCH_RANK_PROMPT,
+  });
+}
+
+/**
+ * Generate a chat response
+ */
+export async function generateChatResponse(
+  prompt: string,
+  conversationHistory?: Array<{ role: 'user' | 'model'; parts: string }>
+): Promise<string> {
+  const model = getChatModel();
+
+  if (conversationHistory && conversationHistory.length > 0) {
+    const chat = model.startChat({
+      history: conversationHistory.map((msg) => ({
+        role: msg.role,
+        parts: [{ text: msg.parts }],
+      })),
+    });
+    const result = await chat.sendMessage(prompt);
+    return result.response.text();
+  }
+
+  const result = await model.generateContent(prompt);
+  return result.response.text();
+}
+
+/**
+ * Generate search ranking
+ */
+export async function generateSearchRanking(prompt: string): Promise<string> {
+  const model = getSearchModel();
+  const result = await model.generateContent(prompt);
+  return result.response.text();
+}
+

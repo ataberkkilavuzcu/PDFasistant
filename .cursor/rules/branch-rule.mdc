@@ -1,0 +1,27 @@
+---
+description: when there is new feature/coding added to project.
+alwaysApply: false
+---
+# Git Workflow Rule – Mandatory Feature Branches
+
+When implementing ANY new feature, refactor, or non-trivial change:
+
+1. ALWAYS create a new Git branch before writing code.
+2. Branch naming format:
+   feature/<short-kebab-case-description>
+   or
+   fix/<short-kebab-case-description>
+
+3. NEVER commit directly to main or develop.
+
+4. After implementation:
+   - Commit changes with a clear message
+   - Push the branch
+   - Open a Pull Request targeting `main`
+
+5. In the PR description:
+   - Summarize what was added
+   - List key files changed
+   - Mention any architectural decisions
+
+If a task does not require code changes, no branch is needed.
