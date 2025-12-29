@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 
 /**
  * PDF Viewer page with chat interface
+ * Modern Dark Theme Implementation
  */
 
 import { useEffect, useState, useCallback, useMemo, Suspense } from 'react';
@@ -81,12 +82,12 @@ function ViewerContent() {
   // Redirect if no document
   if (!documentId && !pdfFile) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <p className="text-gray-600 mb-4">No document loaded</p>
+      <div className="flex items-center justify-center h-screen bg-background text-foreground">
+        <div className="text-center glass-panel p-8 rounded-2xl">
+          <p className="text-gray-400 mb-4 text-lg">No document loaded</p>
           <button
             onClick={() => router.push('/')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="px-6 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-500 transition-colors shadow-lg shadow-primary-500/20 font-medium"
           >
             Upload a PDF
           </button>
@@ -96,48 +97,59 @@ function ViewerContent() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-background overflow-hidden selection:bg-primary-500/30">
       {/* Left side - PDF Viewer */}
-      <div className="flex-1 flex flex-col">
-        {/* Search bar */}
-        <div className="p-4 bg-white border-b">
-          <SearchBar
-            onSearch={handleSearch}
-            results={searchResults}
-            isSearching={isSearching}
-            onResultClick={handlePageClick}
-          />
+      <div className="flex-1 flex flex-col min-w-0 relative">
+        {/* Top Bar: Search & Title */}
+        <div className="h-16 bg-white/5 border-b border-white/10 backdrop-blur-md flex items-center px-4 z-20">
+          <div className="flex-1 max-w-2xl mx-auto">
+            <SearchBar
+              onSearch={handleSearch}
+              results={searchResults}
+              isSearching={isSearching}
+              onResultClick={handlePageClick}
+            />
+          </div>
         </div>
 
-        {/* PDF Viewer */}
-        <div className="flex-1 overflow-hidden">
+        {/* PDF Viewer Container */}
+        <div className="flex-1 overflow-hidden relative bg-[#1a1a1a]">
           {isPDFLoading ? (
             <div className="flex items-center justify-center h-full">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+              <div className="relative">
+                 <div className="w-12 h-12 rounded-full border-4 border-white/10 border-t-primary-500 animate-spin"></div>
+                 <div className="absolute inset-0 flex items-center justify-center">
+                   <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse"></div>
+                 </div>
+              </div>
             </div>
           ) : (
-            <PDFViewer
-              file={pdfFile}
-              currentPage={currentPage}
-              onPageChange={handlePageChange}
-            />
+            <div className="h-full overflow-auto custom-scrollbar">
+              <PDFViewer
+                file={pdfFile}
+                currentPage={currentPage}
+                onPageChange={handlePageChange}
+              />
+            </div>
           )}
         </div>
 
-        {/* Page navigator */}
+        {/* Floating Page Navigator */}
         {totalPages > 0 && (
-          <div className="p-4 bg-white border-t flex justify-center">
-            <PageNavigator
-              currentPage={currentPage}
-              totalPages={totalPages}
-              onPageChange={handlePageChange}
-            />
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
+            <div className="glass-panel rounded-full px-6 py-2 shadow-2xl">
+              <PageNavigator
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={handlePageChange}
+              />
+            </div>
           </div>
         )}
       </div>
 
       {/* Right side - Chat Panel */}
-      <div className="w-96 flex-shrink-0">
+      <div className="w-[400px] flex-shrink-0 border-l border-white/10 bg-white/5 backdrop-blur-sm flex flex-col">
         <ChatPanel
           messages={messages}
           isLoading={isChatLoading}
@@ -153,12 +165,11 @@ function ViewerContent() {
 export default function ViewerPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+      <div className="flex items-center justify-center h-screen bg-background">
+        <div className="w-12 h-12 rounded-full border-4 border-white/10 border-t-primary-500 animate-spin"></div>
       </div>
     }>
       <ViewerContent />
     </Suspense>
   );
 }
-

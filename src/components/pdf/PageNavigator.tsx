@@ -54,34 +54,39 @@ export function PageNavigator({
   );
 
   return (
-    <div className="flex items-center gap-3 p-2 bg-white border rounded-lg shadow-sm">
+    <div className="flex items-center gap-4">
       <button
         onClick={handlePrevious}
         disabled={currentPage <= 1}
-        className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="p-2 text-white bg-white/10 rounded-full hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
         aria-label="Previous page"
       >
-        ← Prev
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
       </button>
 
-      <form onSubmit={handleInputSubmit} className="flex items-center gap-2">
+      <form onSubmit={handleInputSubmit} className="flex items-center gap-2 bg-black/20 rounded-lg px-3 py-1.5 border border-white/5">
+        <span className="text-xs text-gray-400 uppercase tracking-wider font-medium">Page</span>
         <input
           type="text"
           value={inputValue}
           onChange={handleInputChange}
-          className="w-12 px-2 py-1 text-center text-sm border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-12 px-1 py-0.5 text-center text-sm font-bold bg-transparent text-white border-b border-white/20 focus:border-primary-500 focus:outline-none transition-colors"
           aria-label="Page number"
         />
-        <span className="text-sm text-gray-500">/ {totalPages}</span>
+        <span className="text-sm text-gray-500 font-medium">/ {totalPages}</span>
       </form>
 
       <button
         onClick={handleNext}
         disabled={currentPage >= totalPages}
-        className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="p-2 text-white bg-white/10 rounded-full hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
         aria-label="Next page"
       >
-        Next →
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
       </button>
     </div>
   );

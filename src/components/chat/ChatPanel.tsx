@@ -24,11 +24,14 @@ export function ChatPanel({
   onPageClick,
 }: ChatPanelProps) {
   return (
-    <div className="flex flex-col h-full bg-white border-l">
+    <div className="flex flex-col h-full bg-transparent">
       {/* Header */}
-      <div className="px-4 py-3 border-b bg-gray-50">
-        <h2 className="text-lg font-semibold text-gray-800">AI Assistant</h2>
-        <p className="text-xs text-gray-500">Ask questions about your PDF</p>
+      <div className="px-6 py-4 border-b border-white/10 bg-white/5 backdrop-blur-sm">
+        <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-primary-500 animate-pulse-glow"></span>
+          AI Assistant
+        </h2>
+        <p className="text-xs text-gray-400 ml-4">Ask questions about your PDF</p>
       </div>
 
       {/* Messages */}
@@ -42,16 +45,15 @@ export function ChatPanel({
 
       {/* Error display */}
       {error && (
-        <div className="px-4 py-2 bg-red-50 border-t border-red-200">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="px-4 py-2 bg-red-500/10 border-t border-red-500/20 backdrop-blur-sm">
+          <p className="text-sm text-red-400">{error}</p>
         </div>
       )}
 
       {/* Input */}
-      <div className="border-t">
+      <div className="border-t border-white/10 p-4 bg-white/5 backdrop-blur-sm">
         <ChatInput onSend={onSendMessage} isDisabled={isLoading} />
       </div>
     </div>
   );
 }
-
