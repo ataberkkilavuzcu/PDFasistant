@@ -1,5 +1,8 @@
 'use client';
 
+// Disable SSR for this page since it uses pdfjs-dist
+export const dynamic = 'force-dynamic';
+
 /**
  * Landing page with PDF upload
  */
@@ -9,15 +12,6 @@ import { useRouter } from 'next/navigation';
 import { PDFUploader } from '@/components/pdf';
 import { usePDF } from '@/hooks';
 import { extractAllPages } from '@/lib/pdf/extractor';
-import * as pdfjs from 'pdfjs-dist';
-
-// Configure PDF.js worker
-if (typeof window !== 'undefined') {
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    'pdfjs-dist/build/pdf.worker.min.mjs',
-    import.meta.url
-  ).toString();
-}
 
 export default function Home() {
   const router = useRouter();
@@ -31,6 +25,12 @@ export default function Home() {
       setError(null);
 
       try {
+        // Dynamically import pdfjs-dist only on client side
+        const pdfjs = await import('pdfjs-dist');
+        
+        // Configure PDF.js worker
+        pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+
         // Read file as ArrayBuffer
         const arrayBuffer = await file.arrayBuffer();
 
@@ -137,7 +137,7 @@ export default function Home() {
             </p>
           </div>
         </div>
-      </div>
-    </main>
+        </div>
+      </main>
   );
 }

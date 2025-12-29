@@ -1,10 +1,13 @@
 'use client';
 
+// Disable SSR for this page since it uses PDF components
+export const dynamic = 'force-dynamic';
+
 /**
  * PDF Viewer page with chat interface
  */
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PDFViewer, PageNavigator } from '@/components/pdf';
 import { ChatPanel } from '@/components/chat';
@@ -13,7 +16,7 @@ import { usePDF, useChat, usePageContext } from '@/hooks';
 import { searchPages } from '@/lib/search/keyword';
 import type { SearchResult } from '@/lib/search/keyword';
 
-export default function ViewerPage() {
+function ViewerContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const documentId = searchParams.get('id');
@@ -144,6 +147,18 @@ export default function ViewerPage() {
         />
       </div>
     </div>
+  );
+}
+
+export default function ViewerPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <ViewerContent />
+    </Suspense>
   );
 }
 

@@ -12,7 +12,7 @@
     "@google/generative-ai": "^0.24.1",
     "dexie": "^4.2.1",
     "next": "14.2.35",
-    "pdfjs-dist": "^5.4.530",
+    "pdfjs-dist": "5.4.296",
     "react": "^18",
     "react-dom": "^18",
     "react-pdf": "^10.2.0"
@@ -23,6 +23,7 @@
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
+    "ignore-loader": "^0.1.2",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"

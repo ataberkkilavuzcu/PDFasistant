@@ -18,8 +18,8 @@ importers:
         specifier: 14.2.35
         version: 14.2.35(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       pdfjs-dist:
-        specifier: ^5.4.530
-        version: 5.4.530
+        specifier: 5.4.296
+        version: 5.4.296
       react:
         specifier: ^18
         version: 18.3.1
@@ -45,6 +45,9 @@ importers:
       eslint-config-next:
         specifier: 14.2.35
         version: 14.2.35(eslint@8.57.1)(typescript@5.9.3)
+      ignore-loader:
+        specifier: ^0.1.2
+        version: 0.1.2
       postcss:
         specifier: ^8
         version: 8.5.6
@@ -1022,6 +1025,9 @@ packages:
     resolution: {integrity: sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==}
     engines: {node: '>= 0.4'}
 
+  ignore-loader@0.1.2:
+    resolution: {integrity: sha512-yOJQEKrNwoYqrWLS4DcnzM7SEQhRKis5mB+LdKKh4cPmGYlLPR0ozRzHV5jmEk2IxptqJNQA5Cc0gw8Fj12bXA==}
+
   ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
     engines: {node: '>= 4'}
@@ -1402,10 +1408,6 @@ packages:
 
   pdfjs-dist@5.4.296:
     resolution: {integrity: sha512-DlOzet0HO7OEnmUmB6wWGJrrdvbyJKftI1bhMitK7O2N8W2gc757yyYBbINy9IDafXAV9wmKr9t7xsTaNKRG5Q==}
-    engines: {node: '>=20.16.0 || >=22.3.0'}
-
-  pdfjs-dist@5.4.530:
-    resolution: {integrity: sha512-r1hWsSIGGmyYUAHR26zSXkxYWLXLMd6AwqcaFYG9YUZ0GBf5GvcjJSeo512tabM4GYFhxhl5pMCmPr7Q72Rq2Q==}
     engines: {node: '>=20.16.0 || >=22.3.0'}
 
   picocolors@1.1.1:
@@ -2945,6 +2947,8 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
+  ignore-loader@0.1.2: {}
+
   ignore@5.3.2: {}
 
   ignore@7.0.5: {}
@@ -3323,10 +3327,6 @@ snapshots:
       minipass: 7.1.2
 
   pdfjs-dist@5.4.296:
-    optionalDependencies:
-      '@napi-rs/canvas': 0.1.88
-
-  pdfjs-dist@5.4.530:
     optionalDependencies:
       '@napi-rs/canvas': 0.1.88
 
