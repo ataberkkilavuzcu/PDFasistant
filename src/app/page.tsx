@@ -47,15 +47,38 @@ export default function Home() {
             totalPages: 0,
             percentage: 0,
             phase: 'loading',
-            message: 'Loading PDF document...',
+            message: 'Initializing PDF processor...',
           },
         });
 
         // Initialize PDF.js (ensures worker is configured)
-        await initializePDFJS();
+        // Add retry logic for initialization failures
+        let pdfjs;
+        let initAttempts = 0;
+        const maxInitAttempts = 2;
         
-        // Get PDF.js module (already initialized)
-        const pdfjs = await getPDFJS();
+        while (initAttempts < maxInitAttempts) {
+          try {
+            await initializePDFJS();
+            pdfjs = await getPDFJS();
+            break; // Success, exit retry loop
+          } catch (initError) {
+            initAttempts++;
+            if (initAttempts >= maxInitAttempts) {
+              // Last attempt failed, throw the error
+              throw initError;
+            }
+            // Reset and retry
+            const { resetPDFJS } = await import('@/lib/pdf/init');
+            resetPDFJS();
+            // Wait a bit before retrying
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+        
+        if (!pdfjs) {
+          throw new Error('Failed to initialize PDF.js after multiple attempts');
+        }
 
         // Read file as ArrayBuffer
         const arrayBuffer = await file.arrayBuffer();
@@ -139,6 +162,8 @@ export default function Home() {
         
         // Provide user-friendly error messages
         let errorMessage = 'Failed to process PDF';
+        let shouldSuggestRefresh = false;
+        
         if (err instanceof Error) {
           const errorMsg = err.message.toLowerCase();
           
@@ -146,11 +171,20 @@ export default function Home() {
             errorMessage = 'This PDF is password-protected. Please remove the password and try again.';
           } else if (errorMsg.includes('invalid pdf') || errorMsg.includes('corrupted')) {
             errorMessage = 'This file is not a valid PDF or is corrupted.';
-          } else if (errorMsg.includes('object.defineproperty') || errorMsg.includes('non-object')) {
-            errorMessage = 'PDF processing failed to initialize. Please refresh the page and try again.';
-            console.error('PDF.js initialization error - this may require a page refresh');
+          } else if (
+            errorMsg.includes('object.defineproperty') || 
+            errorMsg.includes('non-object') ||
+            errorMsg.includes('initialization failed') ||
+            errorMsg.includes('globalworkeroptions')
+          ) {
+            errorMessage = 'PDF processor failed to initialize. Please refresh the page and try again.';
+            shouldSuggestRefresh = true;
+            console.error('PDF.js initialization error - user should refresh the page');
           } else if (errorMsg.includes('worker')) {
             errorMessage = 'PDF worker failed to load. Please check your internet connection and try again.';
+          } else if (errorMsg.includes('failed to initialize')) {
+            errorMessage = 'PDF processor initialization failed. Please refresh the page and try again.';
+            shouldSuggestRefresh = true;
           } else {
             errorMessage = err.message || 'An unexpected error occurred while processing the PDF.';
           }
@@ -160,6 +194,12 @@ export default function Home() {
         
         setError(errorMessage);
         setProcessingState({ isProcessing: false, progress: null });
+        
+        // If initialization failed, suggest refresh after a delay
+        if (shouldSuggestRefresh) {
+          // The error message already suggests refresh, but we could add a button
+          console.warn('Consider refreshing the page to reinitialize PDF.js');
+        }
       }
     },
     [saveDocument, router]
@@ -235,12 +275,22 @@ export default function Home() {
 
           {error && (
             <div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 backdrop-blur-sm animate-fade-in">
-              <span className="flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                {error}
-              </span>
+                <div className="flex-1">
+                  <p className="mb-2">{error}</p>
+                  {(error.includes('refresh') || error.includes('initialization')) && (
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="px-4 py-2 text-sm font-medium bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg transition-colors"
+                    >
+                      Refresh Page
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
