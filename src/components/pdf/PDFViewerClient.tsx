@@ -9,9 +9,9 @@
  * - Dark theme styling
  */
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type React from 'react';
-import { initializePDFJS } from '@/lib/pdf/init';
+import { initializePDFJS, getPDFJS } from '@/lib/pdf/init';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
@@ -40,14 +40,49 @@ export function PDFViewerClient(props: PDFViewerProps) {
   const [Page, setPage] = useState<React.ComponentType<any> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [pdfjs, setPdfjs] = useState<any>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const loadPDFComponents = async () => {
       try {
+        // Ensure PDF.js is initialized and available globally
         await initializePDFJS();
+        
+        // Get the PDF.js module
+        const pdfjsModule = await getPDFJS();
+        
+        // Configure worker BEFORE importing react-pdf
+        const workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/build/pdf.worker.min.mjs';
+        
+        // Set on the module we got
+        if (pdfjsModule.GlobalWorkerOptions) {
+          pdfjsModule.GlobalWorkerOptions.workerSrc = workerSrc;
+        }
+        
+        // Set on window.pdfjsLib as well
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const windowPdfjs = (window as any).pdfjsLib;
+        if (windowPdfjs?.GlobalWorkerOptions) {
+          windowPdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+        }
+        
+        console.log('PDF.js worker configured:', pdfjsModule.GlobalWorkerOptions?.workerSrc);
+        
+        // Now import react-pdf
         const reactPdf = await import('react-pdf');
+        
+        // Verify and re-set worker after react-pdf imports (it might reset it)
+        if (pdfjsModule.GlobalWorkerOptions) {
+          pdfjsModule.GlobalWorkerOptions.workerSrc = workerSrc;
+        }
+        if (windowPdfjs?.GlobalWorkerOptions) {
+          windowPdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+        }
+        
+        setPdfjs(pdfjsModule);
         setDocument(() => reactPdf.Document);
         setPage(() => reactPdf.Page);
         setIsLoading(false);
@@ -86,7 +121,7 @@ export function PDFViewerClient(props: PDFViewerProps) {
     );
   }
 
-  return <PDFViewerImpl Document={Document} Page={Page} {...props} />;
+  return <PDFViewerImpl Document={Document} Page={Page} pdfjs={pdfjs} {...props} />;
 }
 
 interface PDFViewerImplProps extends PDFViewerProps {
@@ -94,11 +129,14 @@ interface PDFViewerImplProps extends PDFViewerProps {
   Document: React.ComponentType<any>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   Page: React.ComponentType<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pdfjs: any;
 }
 
 function PDFViewerImpl({
   Document,
   Page,
+  pdfjs,
   file,
   currentPage,
   onPageChange,
@@ -106,6 +144,26 @@ function PDFViewerImpl({
   onZoomChange,
   initialZoom = DEFAULT_ZOOM,
 }: PDFViewerImplProps) {
+  // Configure options to pass pdfjs and explicitly disable fake worker
+  const documentOptions = useMemo(() => {
+    const workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/build/pdf.worker.min.mjs';
+    
+    // Ensure worker is set on the pdfjs instance
+    if (pdfjs?.GlobalWorkerOptions) {
+      pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+    }
+    
+    return {
+      // Pass the configured pdfjs instance
+      cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/cmaps/',
+      cMapPacked: true,
+      // Explicitly set worker source
+      workerSrc,
+      // Disable standard font data to reduce load
+      standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/standard_fonts/',
+    };
+  }, [pdfjs]);
+
   const [numPages, setNumPages] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +212,10 @@ function PDFViewerImpl({
     console.error('PDF load error:', err);
     let errorMessage = 'Failed to load PDF';
     
-    if (err.message.includes('password')) {
+    // Check for worker-related errors
+    if (err.message.includes('worker') || err.message.includes('pdf.worker')) {
+      errorMessage = 'PDF worker failed to load. Please refresh the page.';
+    } else if (err.message.includes('password')) {
       errorMessage = 'This PDF is password-protected';
     } else if (err.message.includes('Invalid')) {
       errorMessage = 'Invalid or corrupted PDF file';
@@ -437,6 +498,7 @@ function PDFViewerImpl({
             file={file}
             onLoadSuccess={handleDocumentLoadSuccess}
             onLoadError={handleDocumentLoadError}
+            options={documentOptions}
             loading={
               <div className="flex items-center justify-center h-64">
                 <div className="text-center">
