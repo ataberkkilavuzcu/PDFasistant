@@ -1,41 +1,116 @@
 'use client';
 
 /**
- * PDF file upload component
+ * PDF file upload component with comprehensive validation
+ * - File type validation (MIME type + magic bytes)
+ * - Size limit enforcement (50MB default, configurable)
+ * - Drag & drop support with visual feedback
  */
 
 import { useCallback, useState, useRef } from 'react';
 
-interface PDFUploaderProps {
+/** PDF magic bytes signature */
+const PDF_MAGIC_BYTES = [0x25, 0x50, 0x44, 0x46]; // %PDF
+
+/** Default max file size: 50MB */
+const DEFAULT_MAX_SIZE_MB = 50;
+
+export interface PDFUploaderProps {
   onFileSelect: (file: File) => void;
   isLoading?: boolean;
+  maxSizeMB?: number;
 }
 
-export function PDFUploader({ onFileSelect, isLoading = false }: PDFUploaderProps) {
+export interface PDFValidationResult {
+  valid: boolean;
+  error?: string;
+}
+
+/**
+ * Validate PDF file by checking magic bytes (file signature)
+ * This catches files with wrong extension or corrupted headers
+ */
+async function validatePDFMagicBytes(file: File): Promise<boolean> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const arr = new Uint8Array(reader.result as ArrayBuffer);
+      const isPDF = PDF_MAGIC_BYTES.every((byte, i) => arr[i] === byte);
+      resolve(isPDF);
+    };
+    reader.onerror = () => resolve(false);
+    // Only read first 4 bytes for magic number check
+    reader.readAsArrayBuffer(file.slice(0, 4));
+  });
+}
+
+/**
+ * Format file size for display
+ */
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export function PDFUploader({ 
+  onFileSelect, 
+  isLoading = false,
+  maxSizeMB = DEFAULT_MAX_SIZE_MB 
+}: PDFUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const validateFile = useCallback((file: File): boolean => {
-    if (file.type !== 'application/pdf') {
-      setError('Please upload a PDF file');
-      return false;
+  const maxSizeBytes = maxSizeMB * 1024 * 1024;
+
+  const validateFile = useCallback(async (file: File): Promise<PDFValidationResult> => {
+    // Check MIME type first (fast check)
+    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+      return { valid: false, error: 'Please upload a PDF file' };
     }
 
-    // 50MB limit
-    if (file.size > 50 * 1024 * 1024) {
-      setError('File size must be less than 50MB');
-      return false;
+    // Check file size
+    if (file.size > maxSizeBytes) {
+      return { 
+        valid: false, 
+        error: `File size (${formatFileSize(file.size)}) exceeds ${maxSizeMB}MB limit` 
+      };
     }
 
-    setError(null);
-    return true;
-  }, []);
+    // Check if file is empty
+    if (file.size === 0) {
+      return { valid: false, error: 'File is empty' };
+    }
+
+    // Validate PDF magic bytes (catches corrupted or fake PDFs)
+    const hasValidMagicBytes = await validatePDFMagicBytes(file);
+    if (!hasValidMagicBytes) {
+      return { valid: false, error: 'Invalid PDF file: corrupted or not a real PDF' };
+    }
+
+    return { valid: true };
+  }, [maxSizeBytes, maxSizeMB]);
 
   const handleFile = useCallback(
-    (file: File) => {
-      if (validateFile(file)) {
+    async (file: File) => {
+      setIsValidating(true);
+      setError(null);
+      
+      try {
+        const result = await validateFile(file);
+        
+        if (!result.valid) {
+          setError(result.error || 'Invalid file');
+          return;
+        }
+        
         onFileSelect(file);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Validation failed');
+      } finally {
+        setIsValidating(false);
       }
     },
     [validateFile, onFileSelect]
@@ -92,7 +167,7 @@ export function PDFUploader({ onFileSelect, isLoading = false }: PDFUploaderProp
             ? 'border-primary-500 bg-primary-500/10 scale-[1.02]'
             : 'border-white/10 hover:border-primary-500/50 hover:bg-white/5'
           }
-          ${isLoading ? 'opacity-50 pointer-events-none' : ''}
+          ${isLoading || isValidating ? 'opacity-50 pointer-events-none' : ''}
         `}
       >
         <input
@@ -103,10 +178,12 @@ export function PDFUploader({ onFileSelect, isLoading = false }: PDFUploaderProp
           className="hidden"
         />
 
-        {isLoading ? (
+        {isLoading || isValidating ? (
           <div className="flex flex-col items-center gap-4">
             <div className="w-16 h-16 rounded-full border-4 border-white/10 border-t-primary-500 animate-spin"></div>
-            <p className="text-gray-400 animate-pulse">Processing PDF...</p>
+            <p className="text-gray-400 animate-pulse">
+              {isValidating ? 'Validating file...' : 'Processing PDF...'}
+            </p>
           </div>
         ) : (
           <>

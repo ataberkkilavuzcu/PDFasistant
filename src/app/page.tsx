@@ -6,26 +6,50 @@ export const dynamic = 'force-dynamic';
 /**
  * Landing page with PDF upload
  * Modern, Dark, Animated Design
+ * Features:
+ * - PDF validation (type, size, magic bytes)
+ * - Progress tracking during extraction
+ * - Chunked processing for large PDFs
  */
 
 import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { PDFUploader } from '@/components/pdf';
 import { usePDF } from '@/hooks';
-import { extractAllPages } from '@/lib/pdf/extractor';
+import { extractAllPages, type ExtractionProgress, type PDFDocumentProxy } from '@/lib/pdf/extractor';
+
+interface ProcessingState {
+  isProcessing: boolean;
+  progress: ExtractionProgress | null;
+}
 
 export default function Home() {
   const router = useRouter();
   const { saveDocument } = usePDF();
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingState, setProcessingState] = useState<ProcessingState>({
+    isProcessing: false,
+    progress: null,
+  });
   const [error, setError] = useState<string | null>(null);
 
   const handleFileSelect = useCallback(
     async (file: File) => {
-      setIsProcessing(true);
+      setProcessingState({ isProcessing: true, progress: null });
       setError(null);
 
       try {
+        // Update progress: Loading
+        setProcessingState({
+          isProcessing: true,
+          progress: {
+            currentPage: 0,
+            totalPages: 0,
+            percentage: 0,
+            phase: 'loading',
+            message: 'Loading PDF document...',
+          },
+        });
+
         // Dynamically import pdfjs-dist only on client side
         const pdfjs = await import('pdfjs-dist');
         
@@ -38,8 +62,45 @@ export default function Home() {
         // Load PDF document
         const pdfDoc = await pdfjs.getDocument({ data: arrayBuffer }).promise;
 
-        // Extract text from all pages
-        const pages = await extractAllPages(pdfDoc);
+        // Validate PDF is readable (catches password-protected or corrupted PDFs)
+        if (pdfDoc.numPages === 0) {
+          throw new Error('PDF has no pages or could not be read');
+        }
+
+        // Update progress: Starting extraction
+        setProcessingState({
+          isProcessing: true,
+          progress: {
+            currentPage: 0,
+            totalPages: pdfDoc.numPages,
+            percentage: 0,
+            phase: 'extracting',
+            message: `Preparing to extract ${pdfDoc.numPages} pages...`,
+          },
+        });
+
+        // Extract text from all pages with progress callback
+        const pages = await extractAllPages(
+          pdfDoc as unknown as PDFDocumentProxy,
+          (progress) => {
+            setProcessingState({
+              isProcessing: true,
+              progress,
+            });
+          }
+        );
+
+        // Update progress: Saving
+        setProcessingState({
+          isProcessing: true,
+          progress: {
+            currentPage: pdfDoc.numPages,
+            totalPages: pdfDoc.numPages,
+            percentage: 100,
+            phase: 'complete',
+            message: 'Saving to local storage...',
+          },
+        });
 
         // Save document to IndexedDB
         const documentId = await saveDocument(
@@ -59,14 +120,27 @@ export default function Home() {
         router.push(`/viewer?id=${documentId}`);
       } catch (err) {
         console.error('Error processing PDF:', err);
-        setError(
-          err instanceof Error ? err.message : 'Failed to process PDF'
-        );
-        setIsProcessing(false);
+        
+        // Provide user-friendly error messages
+        let errorMessage = 'Failed to process PDF';
+        if (err instanceof Error) {
+          if (err.message.includes('password')) {
+            errorMessage = 'This PDF is password-protected. Please remove the password and try again.';
+          } else if (err.message.includes('Invalid PDF')) {
+            errorMessage = 'This file is not a valid PDF or is corrupted.';
+          } else {
+            errorMessage = err.message;
+          }
+        }
+        
+        setError(errorMessage);
+        setProcessingState({ isProcessing: false, progress: null });
       }
     },
     [saveDocument, router]
   );
+
+  const { isProcessing, progress } = processingState;
 
   return (
     <main className="min-h-screen relative overflow-hidden bg-background text-foreground selection:bg-primary-500/30">
@@ -100,13 +174,34 @@ export default function Home() {
                 <PDFUploader onFileSelect={handleFileSelect} isLoading={isProcessing} />
                 
                 {isProcessing && (
-                  <div className="mt-8 text-center space-y-3">
-                    <div className="relative w-full h-1 bg-gray-800 rounded-full overflow-hidden">
-                      <div className="absolute top-0 left-0 h-full w-1/3 bg-gradient-to-r from-transparent via-primary-500 to-transparent animate-[shimmer_1.5s_infinite]"></div>
+                  <div className="mt-8 text-center space-y-4">
+                    {/* Progress bar */}
+                    <div className="relative w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                      {progress ? (
+                        <div 
+                          className="absolute top-0 left-0 h-full bg-gradient-to-r from-primary-500 to-purple-500 transition-all duration-300 ease-out"
+                          style={{ width: `${progress.percentage}%` }}
+                        />
+                      ) : (
+                        <div className="absolute top-0 left-0 h-full w-1/3 bg-gradient-to-r from-transparent via-primary-500 to-transparent animate-[shimmer_1.5s_infinite]" />
+                      )}
                     </div>
-                    <p className="text-primary-400 text-sm font-medium animate-pulse">
-                      Analyzing document structure...
-                    </p>
+                    
+                    {/* Progress details */}
+                    <div className="space-y-1">
+                      <p className="text-primary-400 text-sm font-medium">
+                        {progress?.message || 'Initializing...'}
+                      </p>
+                      {progress && progress.totalPages > 0 && (
+                        <p className="text-gray-500 text-xs">
+                          {progress.phase === 'extracting' && (
+                            <>Page {progress.currentPage} of {progress.totalPages} ({progress.percentage}%)</>
+                          )}
+                          {progress.phase === 'loading' && 'Loading document...'}
+                          {progress.phase === 'complete' && 'Finalizing...'}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
