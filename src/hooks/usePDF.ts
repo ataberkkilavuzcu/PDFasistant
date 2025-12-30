@@ -4,7 +4,9 @@
  * Custom hook for PDF state management
  * Handles:
  * - Loading documents from IndexedDB
- * - Saving new documents with metadata and pages
+ * - Saving new documents with metadata, pages, and PDF blob
+ * - PDF blob storage for viewing
+ * - Document deletion functionality
  * - Error handling for storage operations
  */
 
@@ -12,6 +14,13 @@ import { useState, useCallback } from 'react';
 import type { PDFDocument, PDFPage, PDFMetadata } from '@/types/pdf';
 import { db } from '@/lib/db';
 import { generateDocumentId, createPDFDocument } from '@/lib/pdf/extractor';
+
+/** Document summary for list display (without pages/blob for performance) */
+export interface DocumentSummary {
+  id: string;
+  metadata: PDFMetadata;
+  blobSize?: number;
+}
 
 interface UsePDFState {
   document: PDFDocument | null;
@@ -21,10 +30,12 @@ interface UsePDFState {
 
 interface UsePDFReturn extends UsePDFState {
   loadDocument: (id: string) => Promise<void>;
-  saveDocument: (metadata: PDFMetadata, pages: PDFPage[]) => Promise<string>;
+  saveDocument: (metadata: PDFMetadata, pages: PDFPage[], pdfBlob?: Blob) => Promise<string>;
   deleteDocument: (id: string) => Promise<void>;
   clearDocument: () => void;
   getAllDocuments: () => Promise<PDFDocument[]>;
+  getDocumentSummaries: () => Promise<DocumentSummary[]>;
+  getPDFBlob: (id: string) => Promise<Blob | null>;
 }
 
 /**
@@ -67,26 +78,35 @@ export function usePDF(): UsePDFReturn {
 
   /**
    * Save a new document to IndexedDB
+   * Optionally stores the original PDF blob for viewing
    * Returns the generated document ID
    */
   const saveDocument = useCallback(
-    async (metadata: PDFMetadata, pages: PDFPage[]): Promise<string> => {
+    async (metadata: PDFMetadata, pages: PDFPage[], pdfBlob?: Blob): Promise<string> => {
       try {
         const id = generateDocumentId();
         const doc = createPDFDocument(id, metadata, pages);
 
+        // Add blob data if provided
+        const docWithBlob = {
+          ...doc,
+          pdfBlob,
+          blobSize: pdfBlob?.size,
+        };
+
         // Use transaction for atomic operation
         await db.transaction('rw', db.documents, async () => {
-          await db.documents.put(doc);
+          await db.documents.put(docWithBlob);
         });
 
         setState({
-          document: doc,
+          document: docWithBlob,
           isLoading: false,
           error: null,
         });
 
-        console.log(`Document saved: ${id} (${pages.length} pages, ${metadata.fileSize} bytes)`);
+        const blobInfo = pdfBlob ? `, blob: ${(pdfBlob.size / 1024 / 1024).toFixed(2)}MB` : '';
+        console.log(`Document saved: ${id} (${pages.length} pages${blobInfo})`);
         return id;
       } catch (err) {
         console.error('Failed to save document:', err);
@@ -132,6 +152,7 @@ export function usePDF(): UsePDFReturn {
 
   /**
    * Get all stored documents (for document list/history)
+   * Note: This returns full documents including pages - use getDocumentSummaries for lists
    */
   const getAllDocuments = useCallback(async (): Promise<PDFDocument[]> => {
     try {
@@ -140,6 +161,38 @@ export function usePDF(): UsePDFReturn {
     } catch (err) {
       console.error('Failed to get documents:', err);
       return [];
+    }
+  }, []);
+
+  /**
+   * Get document summaries (metadata only, no pages/blob)
+   * More efficient for displaying document lists
+   */
+  const getDocumentSummaries = useCallback(async (): Promise<DocumentSummary[]> => {
+    try {
+      const docs = await db.documents.orderBy('metadata.uploadDate').reverse().toArray();
+      // Return only metadata (exclude pages and blob for performance)
+      return docs.map(doc => ({
+        id: doc.id,
+        metadata: doc.metadata,
+        blobSize: doc.blobSize,
+      }));
+    } catch (err) {
+      console.error('Failed to get document summaries:', err);
+      return [];
+    }
+  }, []);
+
+  /**
+   * Get the PDF blob for a document (for viewing)
+   */
+  const getPDFBlob = useCallback(async (id: string): Promise<Blob | null> => {
+    try {
+      const doc = await db.documents.get(id);
+      return doc?.pdfBlob || null;
+    } catch (err) {
+      console.error('Failed to get PDF blob:', err);
+      return null;
     }
   }, []);
 
@@ -161,6 +214,8 @@ export function usePDF(): UsePDFReturn {
     deleteDocument,
     clearDocument,
     getAllDocuments,
+    getDocumentSummaries,
+    getPDFBlob,
   };
 }
 

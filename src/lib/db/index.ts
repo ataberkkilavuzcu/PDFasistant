@@ -19,8 +19,15 @@ export class PDFasistantDB extends Dexie {
   constructor() {
     super(DB_NAME);
 
+    // Version 1: Initial schema
+    this.version(1).stores({
+      documents: 'id, metadata.title, metadata.uploadDate',
+      messages: 'id, documentId, timestamp',
+      preferences: 'id',
+    });
+
+    // Version 2: Added pdfBlob and blobSize (no index changes needed)
     this.version(DB_VERSION).stores({
-      // Primary key: id, indexed fields for querying
       documents: 'id, metadata.title, metadata.uploadDate',
       messages: 'id, documentId, timestamp',
       preferences: 'id',

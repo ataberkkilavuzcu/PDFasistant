@@ -18,6 +18,10 @@ export interface PDFDocument {
   id: string;
   metadata: PDFMetadata;
   pages: PDFPage[];
+  /** Original PDF file as Blob (for viewing) */
+  pdfBlob?: Blob;
+  /** Size of the PDF blob in bytes */
+  blobSize?: number;
 }
 
 export interface PageContext {

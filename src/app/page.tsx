@@ -120,7 +120,7 @@ export default function Home() {
           },
         });
 
-        // Save document to IndexedDB
+        // Save document to IndexedDB (including PDF blob for viewing)
         const documentId = await saveDocument(
           {
             title: file.name.replace('.pdf', ''),
@@ -128,11 +128,9 @@ export default function Home() {
             uploadDate: new Date(),
             fileSize: file.size,
           },
-          pages
+          pages,
+          file // Store the PDF blob for viewing later
         );
-
-        // Store file in sessionStorage for viewer (temporary solution)
-        sessionStorage.setItem('pdfFile', URL.createObjectURL(file));
 
         // Navigate to viewer
         router.push(`/viewer?id=${documentId}`);
