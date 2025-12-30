@@ -7,6 +7,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import type React from 'react';
+import { initializePDFJS } from '@/lib/pdf/init';
 // Import CSS files (will be handled by Next.js)
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -30,11 +31,11 @@ export function PDFViewerClient(props: PDFViewerProps) {
 
     const loadPDFComponents = async () => {
       try {
-        // Configure worker first
-        const pdfjs = await import('pdfjs-dist');
-        pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+        // Initialize PDF.js worker first (ensures proper setup)
+        await initializePDFJS();
 
         // Then load react-pdf components
+        // react-pdf will use the already-configured worker
         const reactPdf = await import('react-pdf');
 
         setDocument(() => reactPdf.Document);
@@ -42,7 +43,10 @@ export function PDFViewerClient(props: PDFViewerProps) {
         setIsLoading(false);
       } catch (err) {
         console.error('Failed to load PDF components:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load PDF viewer');
+        const errorMessage = err instanceof Error 
+          ? err.message 
+          : 'Failed to load PDF viewer';
+        setError(errorMessage);
         setIsLoading(false);
       }
     };

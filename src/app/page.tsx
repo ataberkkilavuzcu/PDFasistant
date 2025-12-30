@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 import { PDFUploader } from '@/components/pdf';
 import { usePDF } from '@/hooks';
 import { extractAllPages, type ExtractionProgress, type PDFDocumentProxy } from '@/lib/pdf/extractor';
+import { initializePDFJS, getPDFJS } from '@/lib/pdf/init';
 
 interface ProcessingState {
   isProcessing: boolean;
@@ -50,17 +51,34 @@ export default function Home() {
           },
         });
 
-        // Dynamically import pdfjs-dist only on client side
-        const pdfjs = await import('pdfjs-dist');
+        // Initialize PDF.js (ensures worker is configured)
+        await initializePDFJS();
         
-        // Configure PDF.js worker
-        pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+        // Get PDF.js module (already initialized)
+        const pdfjs = await getPDFJS();
 
         // Read file as ArrayBuffer
         const arrayBuffer = await file.arrayBuffer();
 
-        // Load PDF document
-        const pdfDoc = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+        // Load PDF document with error handling
+        let pdfDoc;
+        try {
+          pdfDoc = await pdfjs.getDocument({ 
+            data: arrayBuffer,
+            // Add error handling options
+            verbosity: 0, // Suppress console warnings
+          }).promise;
+        } catch (loadError) {
+          // Provide more specific error messages
+          if (loadError instanceof Error) {
+            if (loadError.message.includes('password')) {
+              throw new Error('This PDF is password-protected. Please remove the password and try again.');
+            } else if (loadError.message.includes('Invalid PDF')) {
+              throw new Error('This file is not a valid PDF or is corrupted.');
+            }
+          }
+          throw loadError;
+        }
 
         // Validate PDF is readable (catches password-protected or corrupted PDFs)
         if (pdfDoc.numPages === 0) {
@@ -124,13 +142,22 @@ export default function Home() {
         // Provide user-friendly error messages
         let errorMessage = 'Failed to process PDF';
         if (err instanceof Error) {
-          if (err.message.includes('password')) {
+          const errorMsg = err.message.toLowerCase();
+          
+          if (errorMsg.includes('password')) {
             errorMessage = 'This PDF is password-protected. Please remove the password and try again.';
-          } else if (err.message.includes('Invalid PDF')) {
+          } else if (errorMsg.includes('invalid pdf') || errorMsg.includes('corrupted')) {
             errorMessage = 'This file is not a valid PDF or is corrupted.';
+          } else if (errorMsg.includes('object.defineproperty') || errorMsg.includes('non-object')) {
+            errorMessage = 'PDF processing failed to initialize. Please refresh the page and try again.';
+            console.error('PDF.js initialization error - this may require a page refresh');
+          } else if (errorMsg.includes('worker')) {
+            errorMessage = 'PDF worker failed to load. Please check your internet connection and try again.';
           } else {
-            errorMessage = err.message;
+            errorMessage = err.message || 'An unexpected error occurred while processing the PDF.';
           }
+        } else if (typeof err === 'string') {
+          errorMessage = err;
         }
         
         setError(errorMessage);
