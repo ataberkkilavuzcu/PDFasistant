@@ -12,12 +12,12 @@ export const dynamic = 'force-dynamic';
  * - Chunked processing for large PDFs
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { PDFUploader } from '@/components/pdf';
 import { usePDF } from '@/hooks';
 import { extractAllPages, type ExtractionProgress, type PDFDocumentProxy } from '@/lib/pdf/extractor';
-import { initializePDFJS, getPDFJS } from '@/lib/pdf/init';
+import { initializePDFJS, getPDFJS, isPDFJSInitialized } from '@/lib/pdf/init';
 
 interface ProcessingState {
   isProcessing: boolean;
@@ -32,6 +32,39 @@ export default function Home() {
     progress: null,
   });
   const [error, setError] = useState<string | null>(null);
+  const [isPDFReady, setIsPDFReady] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  // Pre-initialize PDF.js on page load
+  useEffect(() => {
+    let mounted = true;
+
+    const initPDF = async () => {
+      try {
+        setIsInitializing(true);
+        await initializePDFJS();
+        if (mounted) {
+          setIsPDFReady(true);
+          setIsInitializing(false);
+          console.log('PDF.js pre-initialized successfully');
+        }
+      } catch (err) {
+        if (mounted) {
+          console.error('Failed to pre-initialize PDF.js:', err);
+          setIsPDFReady(false);
+          setIsInitializing(false);
+          // Don't show error immediately - let user try to upload first
+          // Error will be shown if upload fails
+        }
+      }
+    };
+
+    initPDF();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleFileSelect = useCallback(
     async (file: File) => {
@@ -51,33 +84,30 @@ export default function Home() {
           },
         });
 
-        // Initialize PDF.js (ensures worker is configured)
-        // Add retry logic for initialization failures
+        // Ensure PDF.js is initialized (should already be from useEffect, but double-check)
         let pdfjs;
-        let initAttempts = 0;
-        const maxInitAttempts = 2;
-        
-        while (initAttempts < maxInitAttempts) {
+        if (isPDFReady && isPDFJSInitialized()) {
+          // Already initialized, just get the module
+          pdfjs = await getPDFJS();
+        } else {
+          // Not initialized yet, try to initialize now
           try {
             await initializePDFJS();
             pdfjs = await getPDFJS();
-            break; // Success, exit retry loop
-          } catch (initError) {
-            initAttempts++;
-            if (initAttempts >= maxInitAttempts) {
-              // Last attempt failed, throw the error
-              throw initError;
-            }
-            // Reset and retry
+            setIsPDFReady(true);
+          } catch {
+            // If initialization fails, try one more time with reset
             const { resetPDFJS } = await import('@/lib/pdf/init');
             resetPDFJS();
-            // Wait a bit before retrying
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 300));
+            await initializePDFJS();
+            pdfjs = await getPDFJS();
+            setIsPDFReady(true);
           }
         }
         
         if (!pdfjs) {
-          throw new Error('Failed to initialize PDF.js after multiple attempts');
+          throw new Error('Failed to initialize PDF.js');
         }
 
         // Read file as ArrayBuffer
@@ -202,7 +232,7 @@ export default function Home() {
         }
       }
     },
-    [saveDocument, router]
+    [saveDocument, router, isPDFReady]
   );
 
   const { isProcessing, progress } = processingState;
@@ -236,7 +266,16 @@ export default function Home() {
           <div className="w-full transform transition-all duration-500 hover:scale-[1.01] hover:shadow-2xl shadow-primary-500/10">
             <div className="glass-panel rounded-2xl p-1">
               <div className="bg-black/40 rounded-xl p-8 md:p-12 border border-white/5">
-                <PDFUploader onFileSelect={handleFileSelect} isLoading={isProcessing} />
+                <PDFUploader 
+                  onFileSelect={handleFileSelect} 
+                  isLoading={isProcessing || isInitializing}
+                />
+                
+                {isInitializing && !isProcessing && (
+                  <div className="mt-4 text-center">
+                    <p className="text-sm text-gray-400 animate-pulse">Initializing PDF processor...</p>
+                  </div>
+                )}
                 
                 {isProcessing && (
                   <div className="mt-8 text-center space-y-4">

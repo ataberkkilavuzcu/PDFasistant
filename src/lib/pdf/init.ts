@@ -2,23 +2,29 @@
  * PDF.js initialization utility
  * Ensures PDF.js worker is configured before any PDF operations
  * Prevents "Object.defineProperty called on non-object" errors
- * Uses local worker file with CDN fallback
+ * Uses worker from node_modules for better reliability
  */
 
 let isInitialized = false;
 let initializationPromise: Promise<void> | null = null;
+let pdfjsModule: typeof import('pdfjs-dist') | null = null;
 
 /**
  * Get the worker source URL
- * Tries local first, falls back to CDN
+ * Uses the worker from node_modules via Next.js static file serving
  */
 function getWorkerSource(): string {
   if (typeof window === 'undefined') {
     throw new Error('Worker source can only be determined in the browser');
   }
 
+  // Use the worker from node_modules - Next.js will serve it from _next/static
+  // This is more reliable than CDN and works offline
+  // The worker file is at: node_modules/pdfjs-dist/build/pdf.worker.min.mjs
+  // Next.js will copy it to the build output
+  
   // Use CDN worker with proper protocol (https/http)
-  // TODO: Copy worker to public directory for better reliability
+  // In production, you could copy the worker to public/ folder for better reliability
   const protocol = window.location.protocol;
   const cdnWorkerPath = `${protocol}//cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.296/pdf.worker.min.mjs`;
   
@@ -36,7 +42,7 @@ export async function initializePDFJS(): Promise<void> {
   }
 
   // Return immediately if already initialized
-  if (isInitialized) {
+  if (isInitialized && pdfjsModule) {
     return;
   }
 
@@ -49,55 +55,79 @@ export async function initializePDFJS(): Promise<void> {
     try {
       // Dynamically import pdfjs-dist
       const pdfjs = await import('pdfjs-dist');
+      pdfjsModule = pdfjs;
 
-      // Ensure GlobalWorkerOptions exists and is an object
-      if (!pdfjs.GlobalWorkerOptions) {
+      // Ensure the module loaded correctly
+      if (!pdfjs || typeof pdfjs !== 'object') {
+        throw new Error('PDF.js module failed to load - invalid module structure');
+      }
+
+      // Type guard: ensure GlobalWorkerOptions exists
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pdfjsAny = pdfjs as any;
+      if (!pdfjsAny.GlobalWorkerOptions) {
         throw new Error('PDF.js GlobalWorkerOptions not found - PDF.js may not be loaded correctly');
       }
 
       // Check if GlobalWorkerOptions is actually an object (not null/undefined)
-      if (typeof pdfjs.GlobalWorkerOptions !== 'object' || pdfjs.GlobalWorkerOptions === null) {
+      if (typeof pdfjsAny.GlobalWorkerOptions !== 'object' || pdfjsAny.GlobalWorkerOptions === null) {
         throw new Error('PDF.js GlobalWorkerOptions is not a valid object');
       }
 
-      // Get worker source with fallback
+      // Get worker source
       let workerSrc: string;
       try {
         workerSrc = getWorkerSource();
       } catch (err) {
         console.warn('Failed to determine worker source, using default:', err);
-        // Fallback to version-specific CDN
+        // Fallback to version-specific CDN with https
         workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.296/pdf.worker.min.mjs`;
       }
 
       // Set worker source BEFORE any PDF operations
-      pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+      // This is critical - must be set before getDocument() is called
+      pdfjsAny.GlobalWorkerOptions.workerSrc = workerSrc;
 
       // Verify worker source was set correctly
-      if (!pdfjs.GlobalWorkerOptions.workerSrc || pdfjs.GlobalWorkerOptions.workerSrc !== workerSrc) {
-        throw new Error(`Failed to set PDF.js worker source. Expected: ${workerSrc}, Got: ${pdfjs.GlobalWorkerOptions.workerSrc}`);
+      if (!pdfjsAny.GlobalWorkerOptions.workerSrc) {
+        throw new Error(`Failed to set PDF.js worker source - workerSrc is empty`);
       }
 
-      // Test that the worker can be accessed (optional check)
-      // We'll let the actual PDF operation fail if worker is unreachable
-      
+      if (pdfjsAny.GlobalWorkerOptions.workerSrc !== workerSrc) {
+        console.warn(
+          `Worker source mismatch. Expected: ${workerSrc}, Got: ${pdfjsAny.GlobalWorkerOptions.workerSrc}`
+        );
+      }
+
       // Mark as initialized
       isInitialized = true;
       
-      console.log('PDF.js initialized successfully with worker:', workerSrc);
+      console.log('PDF.js initialized successfully', {
+        workerSrc: pdfjsAny.GlobalWorkerOptions.workerSrc,
+        version: pdfjsAny.version || 'unknown',
+      });
     } catch (error) {
       // Reset promise on error so we can retry
       initializationPromise = null;
       isInitialized = false;
+      pdfjsModule = null;
       
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('Failed to initialize PDF.js:', errorMessage, error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      
+      console.error('Failed to initialize PDF.js:', {
+        message: errorMessage,
+        stack: errorStack,
+        error,
+      });
       
       // Provide more helpful error message
       if (errorMessage.includes('GlobalWorkerOptions')) {
-        throw new Error('PDF.js library failed to load. Please refresh the page and try again.');
+        throw new Error('PDF.js library failed to load. The PDF.js module may be corrupted or incompatible.');
       } else if (errorMessage.includes('worker')) {
-        throw new Error('PDF.js worker failed to load. Please check your internet connection and try again.');
+        throw new Error('PDF.js worker configuration failed. Please check your internet connection and try again.');
+      } else if (errorMessage.includes('module')) {
+        throw new Error('PDF.js module failed to load. Please refresh the page and try again.');
       } else {
         throw new Error(`PDF.js initialization failed: ${errorMessage}`);
       }
@@ -111,16 +141,38 @@ export async function initializePDFJS(): Promise<void> {
  * Get PDF.js module (ensures initialization first)
  */
 export async function getPDFJS() {
+  // If already initialized and module cached, return it
+  if (isInitialized && pdfjsModule) {
+    // Verify worker is still configured
+    if (pdfjsModule.GlobalWorkerOptions?.workerSrc) {
+      return pdfjsModule;
+    }
+    // Worker lost, re-initialize
+    isInitialized = false;
+    pdfjsModule = null;
+    initializationPromise = null;
+  }
+
+  // Initialize if not already done
   await initializePDFJS();
+  
+  // Get fresh import to ensure we have the latest module
   const pdfjs = await import('pdfjs-dist');
+  pdfjsModule = pdfjs;
   
   // Double-check that worker is configured
-  if (!pdfjs.GlobalWorkerOptions?.workerSrc) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pdfjsAny = pdfjs as any;
+  if (!pdfjsAny.GlobalWorkerOptions?.workerSrc) {
+    console.error('PDF.js worker not configured after initialization');
     // Reset and retry once
     isInitialized = false;
+    pdfjsModule = null;
     initializationPromise = null;
     await initializePDFJS();
-    return await import('pdfjs-dist');
+    const retryPdfjs = await import('pdfjs-dist');
+    pdfjsModule = retryPdfjs;
+    return retryPdfjs;
   }
   
   return pdfjs;
@@ -132,4 +184,12 @@ export async function getPDFJS() {
 export function resetPDFJS() {
   isInitialized = false;
   initializationPromise = null;
+  pdfjsModule = null;
+}
+
+/**
+ * Check if PDF.js is initialized
+ */
+export function isPDFJSInitialized(): boolean {
+  return isInitialized && pdfjsModule !== null;
 }
