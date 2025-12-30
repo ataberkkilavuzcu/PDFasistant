@@ -38,6 +38,6 @@ next-env.d.ts
 
 STEPS.md
 
-.cursor
+.cursor/
 
-.agents
+.agents/
