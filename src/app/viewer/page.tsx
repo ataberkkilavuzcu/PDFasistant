@@ -22,10 +22,10 @@ function ViewerContent() {
   const searchParams = useSearchParams();
   const documentId = searchParams.get('id');
 
-  const { document, loadDocument, isLoading: isPDFLoading } = usePDF();
+  const { document, loadDocument, isLoading: isPDFLoading, getPDFBlob } = usePDF();
   const { messages, isLoading: isChatLoading, error: chatError, sendMessage, loadHistory } = useChat();
   
-  const [pdfFile] = useState<File | null>(null);
+  const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
@@ -44,6 +44,37 @@ function ViewerContent() {
       loadHistory(documentId);
     }
   }, [documentId, loadDocument, loadHistory]);
+
+  // Load PDF blob for viewing once document is loaded
+  useEffect(() => {
+    const loadPDFBlob = async () => {
+      if (!documentId || !document) return;
+      
+      // First check if document has blob inline
+      if (document.pdfBlob) {
+        const url = URL.createObjectURL(document.pdfBlob);
+        setPdfFileUrl(url);
+        return;
+      }
+      
+      // Otherwise try to get it from DB
+      const blob = await getPDFBlob(documentId);
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        setPdfFileUrl(url);
+      }
+    };
+
+    loadPDFBlob();
+
+    // Cleanup blob URL on unmount
+    return () => {
+      if (pdfFileUrl) {
+        URL.revokeObjectURL(pdfFileUrl);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentId, document, getPDFBlob]);
 
   // Handle page change from viewer
   const handlePageChange = useCallback((page: number) => {
@@ -80,7 +111,7 @@ function ViewerContent() {
   );
 
   // Redirect if no document
-  if (!documentId && !pdfFile) {
+  if (!documentId) {
     return (
       <div className="flex items-center justify-center h-screen bg-background text-foreground">
         <div className="text-center glass-panel p-8 rounded-2xl">
@@ -123,13 +154,22 @@ function ViewerContent() {
                  </div>
               </div>
             </div>
-          ) : (
+          ) : pdfFileUrl ? (
             <div className="h-full overflow-auto custom-scrollbar">
               <PDFViewer
-                file={pdfFile}
+                file={pdfFileUrl}
                 currentPage={currentPage}
                 onPageChange={handlePageChange}
               />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-400">
+              <div className="text-center">
+                <svg className="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p>Loading PDF...</p>
+              </div>
             </div>
           )}
         </div>

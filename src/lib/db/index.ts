@@ -1,5 +1,6 @@
 /**
  * Dexie.js database instance for PDFasistant
+ * Manages PDF documents, chat messages, and user preferences
  */
 
 import Dexie, { type Table } from 'dexie';
@@ -19,8 +20,16 @@ export class PDFasistantDB extends Dexie {
   constructor() {
     super(DB_NAME);
 
+    // Version 1: Initial schema
+    this.version(1).stores({
+      documents: 'id, metadata.title, metadata.uploadDate',
+      messages: 'id, documentId, timestamp',
+      preferences: 'id',
+    });
+
+    // Version 2: Added pdfBlob and blobSize (no index changes needed)
+    // Blobs are stored inline, not indexed
     this.version(DB_VERSION).stores({
-      // Primary key: id, indexed fields for querying
       documents: 'id, metadata.title, metadata.uploadDate',
       messages: 'id, documentId, timestamp',
       preferences: 'id',

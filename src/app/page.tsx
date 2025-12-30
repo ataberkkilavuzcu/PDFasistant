@@ -4,18 +4,21 @@
 export const dynamic = 'force-dynamic';
 
 /**
- * Landing page with PDF upload
+ * Landing page with PDF upload and document management
  * Modern, Dark, Animated Design
  * Features:
  * - PDF validation (type, size, magic bytes)
  * - Progress tracking during extraction
  * - Chunked processing for large PDFs
+ * - Document list with metadata display
+ * - Document deletion functionality
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { PDFUploader } from '@/components/pdf';
-import { usePDF } from '@/hooks';
+import { DocumentList } from '@/components/documents';
+import { usePDF, type DocumentSummary } from '@/hooks';
 import { extractAllPages, type ExtractionProgress, type PDFDocumentProxy } from '@/lib/pdf/extractor';
 import { initializePDFJS, getPDFJS } from '@/lib/pdf/init';
 
@@ -26,12 +29,31 @@ interface ProcessingState {
 
 export default function Home() {
   const router = useRouter();
-  const { saveDocument } = usePDF();
+  const { saveDocument, deleteDocument, getDocumentSummaries } = usePDF();
   const [processingState, setProcessingState] = useState<ProcessingState>({
     isProcessing: false,
     progress: null,
   });
   const [error, setError] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(true);
+
+  // Load documents on mount
+  const loadDocuments = useCallback(async () => {
+    setIsLoadingDocs(true);
+    try {
+      const docs = await getDocumentSummaries();
+      setDocuments(docs);
+    } catch (err) {
+      console.error('Failed to load documents:', err);
+    } finally {
+      setIsLoadingDocs(false);
+    }
+  }, [getDocumentSummaries]);
+
+  useEffect(() => {
+    loadDocuments();
+  }, [loadDocuments]);
 
   const handleFileSelect = useCallback(
     async (file: File) => {
@@ -120,7 +142,7 @@ export default function Home() {
           },
         });
 
-        // Save document to IndexedDB
+        // Save document to IndexedDB (including PDF blob for viewing)
         const documentId = await saveDocument(
           {
             title: file.name.replace('.pdf', ''),
@@ -128,11 +150,9 @@ export default function Home() {
             uploadDate: new Date(),
             fileSize: file.size,
           },
-          pages
+          pages,
+          file // Store the PDF blob for viewing later
         );
-
-        // Store file in sessionStorage for viewer (temporary solution)
-        sessionStorage.setItem('pdfFile', URL.createObjectURL(file));
 
         // Navigate to viewer
         router.push(`/viewer?id=${documentId}`);
@@ -243,6 +263,18 @@ export default function Home() {
                 </svg>
                 {error}
               </span>
+            </div>
+          )}
+
+          {/* Document List */}
+          {(documents.length > 0 || isLoadingDocs) && (
+            <div className="mt-12 w-full">
+              <DocumentList
+                documents={documents}
+                onDelete={deleteDocument}
+                onRefresh={loadDocuments}
+                isLoading={isLoadingDocs}
+              />
             </div>
           )}
         </div>
