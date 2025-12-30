@@ -11,22 +11,16 @@ let pdfjsModule: typeof import('pdfjs-dist') | null = null;
 
 /**
  * Get the worker source URL
- * Uses the worker from node_modules via Next.js static file serving
+ * Uses jsDelivr CDN (same as the main library) for consistency
  */
 function getWorkerSource(): string {
   if (typeof window === 'undefined') {
     throw new Error('Worker source can only be determined in the browser');
   }
 
-  // Use the worker from node_modules - Next.js will serve it from _next/static
-  // This is more reliable than CDN and works offline
-  // The worker file is at: node_modules/pdfjs-dist/build/pdf.worker.min.mjs
-  // Next.js will copy it to the build output
-  
-  // Use CDN worker with proper protocol (https/http)
-  // In production, you could copy the worker to public/ folder for better reliability
-  const protocol = window.location.protocol;
-  const cdnWorkerPath = `${protocol}//cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.296/pdf.worker.min.mjs`;
+  // Use jsDelivr CDN worker (same CDN as the main library)
+  // The worker file is at build/pdf.worker.min.mjs
+  const cdnWorkerPath = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/build/pdf.worker.min.mjs';
   
   return cdnWorkerPath;
 }
@@ -53,8 +47,53 @@ export async function initializePDFJS(): Promise<void> {
     }
 
     try {
-      // Dynamically import pdfjs-dist
-      const pdfjs = await import('pdfjs-dist');
+      // #region agent log
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const hasPdfjsLib = typeof (window as any).pdfjsLib !== 'undefined';
+      fetch('http://127.0.0.1:7243/ingest/40bdd1e0-917f-4f9b-9285-c96e501c16d1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'init.ts:57',message:'loading pdfjs-dist from CDN',data:{hasWindow:typeof window!=='undefined',hasPdfjsLib},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'G'})}).catch(()=>{});
+      // #endregion
+      
+      // Access pdfjs from global window object (loaded from CDN via Next.js Script)
+      // Wait for it to be available if Script is still loading
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let pdfjs = (window as any).pdfjsLib;
+      
+      // If not available yet, wait for Script to load (max 10 seconds)
+      if (!pdfjs) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/40bdd1e0-917f-4f9b-9285-c96e501c16d1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'init.ts:145',message:'waiting for pdfjsLib from Script',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'G'})}).catch(()=>{});
+        // #endregion
+        await new Promise<void>((resolve, reject) => {
+          const checkInterval = setInterval(() => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            pdfjs = (window as any).pdfjsLib;
+            if (pdfjs) {
+              clearInterval(checkInterval);
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/40bdd1e0-917f-4f9b-9285-c96e501c16d1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'init.ts:152',message:'pdfjsLib available from Script',data:{hasPdfjs:!!pdfjs},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'G'})}).catch(()=>{});
+              // #endregion
+              resolve();
+            }
+          }, 100);
+          
+          setTimeout(() => {
+            clearInterval(checkInterval);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (!(window as any).pdfjsLib) {
+              // #region agent log
+              fetch('http://127.0.0.1:7243/ingest/40bdd1e0-917f-4f9b-9285-c96e501c16d1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'init.ts:160',message:'pdfjsLib timeout from Script',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run4',hypothesisId:'G'})}).catch(()=>{});
+              // #endregion
+              reject(new Error('PDF.js failed to load from CDN script - timeout'));
+            }
+          }, 10000);
+        });
+        
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        pdfjs = (window as any).pdfjsLib;
+      }
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/40bdd1e0-917f-4f9b-9285-c96e501c16d1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'init.ts:68',message:'pdfjs-dist loaded from CDN',data:{hasPdfjs:!!pdfjs,type:typeof pdfjs,isObject:typeof pdfjs==='object',hasKeys:pdfjs?Object.keys(pdfjs).length:0},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'G'})}).catch(()=>{});
+      // #endregion
       pdfjsModule = pdfjs;
 
       // Ensure the module loaded correctly
@@ -65,13 +104,58 @@ export async function initializePDFJS(): Promise<void> {
       // Type guard: ensure GlobalWorkerOptions exists
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pdfjsAny = pdfjs as any;
-      if (!pdfjsAny.GlobalWorkerOptions) {
+      
+      // In ESM builds, GlobalWorkerOptions might be accessed differently
+      // Try to get the actual GlobalWorkerOptions object
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let globalWorkerOptions: any;
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/40bdd1e0-917f-4f9b-9285-c96e501c16d1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'init.ts:70',message:'checking GlobalWorkerOptions existence',data:{hasGlobalWorkerOptions:!!pdfjsAny.GlobalWorkerOptions,type:typeof pdfjsAny.GlobalWorkerOptions,hasDefault:!!pdfjsAny.default,defaultType:typeof pdfjsAny.default},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C'})}).catch(()=>{});
+      // #endregion
+      
+      // Check if pdfjs is a namespace object (ESM default export)
+      if (pdfjsAny.default && pdfjsAny.default.GlobalWorkerOptions) {
+        globalWorkerOptions = pdfjsAny.default.GlobalWorkerOptions;
+        pdfjsModule = pdfjsAny.default; // Use default export
+      } else if (pdfjsAny.GlobalWorkerOptions) {
+        // If GlobalWorkerOptions is a function (getter), call it or access its properties
+        if (typeof pdfjsAny.GlobalWorkerOptions === 'function') {
+          // It's a function - try to access it as a getter or get the actual object
+          // In some PDF.js builds, GlobalWorkerOptions is accessed via a getter
+          try {
+            // Try accessing workerSrc directly - if it works, the function is a getter
+            const testValue = pdfjsAny.GlobalWorkerOptions.workerSrc;
+            if (testValue !== undefined) {
+              globalWorkerOptions = pdfjsAny.GlobalWorkerOptions;
+            } else {
+              // It's a function but not a getter - might need to call it
+              throw new Error('GlobalWorkerOptions is a function but not accessible as object');
+            }
+            } catch {
+              // If accessing properties fails, try to get the actual object
+              // Some ESM builds expose it differently
+              if (pdfjsAny.getGlobalWorkerOptions) {
+                globalWorkerOptions = pdfjsAny.getGlobalWorkerOptions();
+              } else {
+                throw new Error('PDF.js GlobalWorkerOptions is a function but cannot be accessed');
+              }
+            }
+        } else if (typeof pdfjsAny.GlobalWorkerOptions === 'object' && pdfjsAny.GlobalWorkerOptions !== null) {
+          globalWorkerOptions = pdfjsAny.GlobalWorkerOptions;
+        } else {
+          throw new Error('PDF.js GlobalWorkerOptions is not accessible');
+        }
+      } else {
         throw new Error('PDF.js GlobalWorkerOptions not found - PDF.js may not be loaded correctly');
       }
-
-      // Check if GlobalWorkerOptions is actually an object (not null/undefined)
-      if (typeof pdfjsAny.GlobalWorkerOptions !== 'object' || pdfjsAny.GlobalWorkerOptions === null) {
-        throw new Error('PDF.js GlobalWorkerOptions is not a valid object');
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/40bdd1e0-917f-4f9b-9285-c96e501c16d1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'init.ts:105',message:'GlobalWorkerOptions resolved',data:{type:typeof globalWorkerOptions,isObject:typeof globalWorkerOptions==='object',hasWorkerSrc:!!globalWorkerOptions?.workerSrc},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C,E'})}).catch(()=>{});
+      // #endregion
+      
+      if (!globalWorkerOptions || (typeof globalWorkerOptions !== 'object' && typeof globalWorkerOptions !== 'function')) {
+        throw new Error('PDF.js GlobalWorkerOptions is not a valid object or function');
       }
 
       // Get worker source
@@ -80,31 +164,73 @@ export async function initializePDFJS(): Promise<void> {
         workerSrc = getWorkerSource();
       } catch (err) {
         console.warn('Failed to determine worker source, using default:', err);
-        // Fallback to version-specific CDN with https
-        workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.4.296/pdf.worker.min.mjs`;
+        // Fallback to jsDelivr CDN worker
+        workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/build/pdf.worker.min.mjs';
       }
 
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/40bdd1e0-917f-4f9b-9285-c96e501c16d1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'init.ts:165',message:'before setting worker source',data:{workerSrc,currentWorkerSrc:globalWorkerOptions?.workerSrc,globalWorkerOptionsType:typeof globalWorkerOptions},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      
       // Set worker source BEFORE any PDF operations
       // This is critical - must be set before getDocument() is called
-      pdfjsAny.GlobalWorkerOptions.workerSrc = workerSrc;
+      // Handle both object and function (getter) cases
+      try {
+        if (typeof globalWorkerOptions === 'object' && globalWorkerOptions !== null) {
+          globalWorkerOptions.workerSrc = workerSrc;
+        } else if (typeof globalWorkerOptions === 'function') {
+          // If it's a function, try to set it as a property
+          // Some PDF.js builds use a function that acts as both getter and setter
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (globalWorkerOptions as any).workerSrc = workerSrc;
+        } else {
+          throw new Error('Cannot set workerSrc on GlobalWorkerOptions');
+        }
+      } catch (setError) {
+        // If direct assignment fails, try using the default export's GlobalWorkerOptions
+        if (pdfjsAny.default && pdfjsAny.default.GlobalWorkerOptions) {
+          pdfjsAny.default.GlobalWorkerOptions.workerSrc = workerSrc;
+          globalWorkerOptions = pdfjsAny.default.GlobalWorkerOptions;
+        } else {
+          throw new Error(`Failed to set PDF.js worker source: ${setError instanceof Error ? setError.message : String(setError)}`);
+        }
+      }
+      
+      // #region agent log
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const actualWorkerSrc = typeof globalWorkerOptions === 'object' ? globalWorkerOptions?.workerSrc : (globalWorkerOptions as any)?.workerSrc;
+      fetch('http://127.0.0.1:7243/ingest/40bdd1e0-917f-4f9b-9285-c96e501c16d1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'init.ts:195',message:'after setting worker source',data:{setTo:workerSrc,actualValue:actualWorkerSrc,matches:actualWorkerSrc===workerSrc},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
 
       // Verify worker source was set correctly
-      if (!pdfjsAny.GlobalWorkerOptions.workerSrc) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const verifiedWorkerSrc = typeof globalWorkerOptions === 'object' ? globalWorkerOptions?.workerSrc : (globalWorkerOptions as any)?.workerSrc;
+      if (!verifiedWorkerSrc) {
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/40bdd1e0-917f-4f9b-9285-c96e501c16d1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'init.ts:200',message:'worker source empty after set',data:{workerSrc,globalWorkerOptionsType:typeof globalWorkerOptions},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         throw new Error(`Failed to set PDF.js worker source - workerSrc is empty`);
       }
 
-      if (pdfjsAny.GlobalWorkerOptions.workerSrc !== workerSrc) {
+      if (verifiedWorkerSrc !== workerSrc) {
         console.warn(
-          `Worker source mismatch. Expected: ${workerSrc}, Got: ${pdfjsAny.GlobalWorkerOptions.workerSrc}`
+          `Worker source mismatch. Expected: ${workerSrc}, Got: ${verifiedWorkerSrc}`
         );
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/40bdd1e0-917f-4f9b-9285-c96e501c16d1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'init.ts:207',message:'worker source mismatch',data:{expected:workerSrc,got:verifiedWorkerSrc},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
       }
 
       // Mark as initialized
       isInitialized = true;
       
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const finalWorkerSrc = typeof globalWorkerOptions === 'object' ? globalWorkerOptions?.workerSrc : (globalWorkerOptions as any)?.workerSrc;
+      const pdfjsVersion = pdfjsModule?.version || pdfjsAny?.version || pdfjsAny?.default?.version || 'unknown';
+      
       console.log('PDF.js initialized successfully', {
-        workerSrc: pdfjsAny.GlobalWorkerOptions.workerSrc,
-        version: pdfjsAny.version || 'unknown',
+        workerSrc: finalWorkerSrc,
+        version: pdfjsVersion,
       });
     } catch (error) {
       // Reset promise on error so we can retry
@@ -114,6 +240,9 @@ export async function initializePDFJS(): Promise<void> {
       
       const errorMessage = error instanceof Error ? error.message : String(error);
       const errorStack = error instanceof Error ? error.stack : undefined;
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/40bdd1e0-917f-4f9b-9285-c96e501c16d1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'init.ts:115',message:'initialization error caught',data:{errorMessage,errorName:error instanceof Error?error.name:'unknown',errorStack,errorType:error?.constructor?.name,hasObjectDefineProperty:errorMessage.includes('Object.defineProperty')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'})}).catch(()=>{});
+      // #endregion
       
       console.error('Failed to initialize PDF.js:', {
         message: errorMessage,
@@ -156,8 +285,9 @@ export async function getPDFJS() {
   // Initialize if not already done
   await initializePDFJS();
   
-  // Get fresh import to ensure we have the latest module
-  const pdfjs = await import('pdfjs-dist');
+  // Get pdfjs from global window (loaded from CDN)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pdfjs = (window as any).pdfjsLib;
   pdfjsModule = pdfjs;
   
   // Double-check that worker is configured
