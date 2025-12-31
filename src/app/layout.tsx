@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Script from 'next/script';
 import localFont from 'next/font/local';
 import './globals.css';
 
@@ -31,6 +32,24 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}
       >
+        {/* Load PDF.js from CDN to bypass webpack module system */}
+        <Script
+          id="pdfjs-loader"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              (async function() {
+                try {
+                  const pdfjsLib = await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@5.4.296/build/pdf.mjs');
+                  window.pdfjsLib = pdfjsLib;
+                  console.log('PDF.js loaded from CDN');
+                } catch (error) {
+                  console.error('Failed to load PDF.js from CDN:', error);
+                }
+              })();
+            `,
+          }}
+        />
         {children}
       </body>
     </html>
