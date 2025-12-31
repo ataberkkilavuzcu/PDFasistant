@@ -33,6 +33,7 @@ function ViewerContent() {
   const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   const pages = useMemo(() => document?.pages || [], [document?.pages]);
   const {
@@ -96,12 +97,16 @@ function ViewerContent() {
     [documentId, contextString, currentPage, sendMessage]
   );
 
-  // Handle search
+  // Handle search (for results dropdown - debounced)
   const handleSearch = useCallback(
     (query: string) => {
-      if (!pages.length) return;
+      if (!pages.length) {
+        setSearchResults([]);
+        return;
+      }
       setIsSearching(true);
-      const results = searchPages(pages, query);
+      // Note: searchQuery is already updated via onQueryChange for real-time highlighting
+      const results = query.trim() ? searchPages(pages, query) : [];
       setSearchResults(results);
       setIsSearching(false);
     },
@@ -175,6 +180,7 @@ function ViewerContent() {
               results={searchResults}
               isSearching={isSearching}
               onResultClick={handlePageClick}
+              onQueryChange={setSearchQuery}
             />
           </div>
         </div>
@@ -199,6 +205,7 @@ function ViewerContent() {
               currentPage={currentPage}
               onPageChange={handlePageChange}
               onDocumentLoad={handleDocumentLoad}
+              searchQuery={searchQuery}
             />
           ) : (
             <div className="flex items-center justify-center h-full bg-[#1a1a1a] text-gray-400">
