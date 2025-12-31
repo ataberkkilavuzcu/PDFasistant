@@ -12,6 +12,7 @@ interface SearchBarProps {
   results: SearchResult[];
   isSearching: boolean;
   onResultClick: (pageNumber: number) => void;
+  onQueryChange?: (query: string) => void; // Real-time query updates for highlighting
 }
 
 export function SearchBar({
@@ -19,21 +20,69 @@ export function SearchBar({
   results,
   isSearching,
   onResultClick,
+  onQueryChange,
 }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Handle real-time query changes for highlighting
+  const handleQueryChange = useCallback(
+    (newQuery: string) => {
+      setQuery(newQuery);
+      
+      // Clear previous debounce timer
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      
+      // Update search query immediately for highlighting (no debounce)
+      if (onQueryChange) {
+        onQueryChange(newQuery);
+      }
+      
+      // Debounce the full search (for results dropdown)
+      debounceTimerRef.current = setTimeout(() => {
+        if (newQuery.trim()) {
+          onSearch(newQuery.trim());
+          setIsOpen(true);
+        } else {
+          // Clear results when query is empty
+          onSearch('');
+          setIsOpen(false);
+        }
+      }, 300); // 300ms debounce for search results
+    },
+    [onSearch, onQueryChange]
+  );
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
+      // Clear debounce timer
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
       if (query.trim()) {
         onSearch(query.trim());
         setIsOpen(true);
+      } else {
+        onSearch('');
+        setIsOpen(false);
       }
     },
     [query, onSearch]
   );
+
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleResultClick = useCallback(
     (pageNumber: number) => {
@@ -64,7 +113,7 @@ export function SearchBar({
           <input
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => handleQueryChange(e.target.value)}
             placeholder="Search in document..."
             className="relative w-full px-4 py-2 pl-10 bg-white/10 border border-white/10 text-white placeholder-gray-400 rounded-lg focus:outline-none focus:border-primary-500/50 focus:bg-white/15 transition-all"
           />

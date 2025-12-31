@@ -7,11 +7,16 @@ import type { MessageRole } from '@/types/chat';
 
 /**
  * Stored PDF document in IndexedDB
+ * Includes optional blob storage for the original PDF file
  */
 export interface StoredDocument {
   id: string;
   metadata: PDFMetadata;
   pages: PDFPage[];
+  /** Original PDF file as Blob (for viewing) */
+  pdfBlob?: Blob;
+  /** Size of the PDF blob in bytes */
+  blobSize?: number;
 }
 
 /**
@@ -48,8 +53,9 @@ export const TABLE_NAMES = {
 
 /**
  * Database schema version
+ * Version 2: Added pdfBlob and blobSize fields to documents
  */
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 /**
  * Database name

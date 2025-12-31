@@ -12,12 +12,12 @@ export const dynamic = 'force-dynamic';
  * - Chunked processing for large PDFs
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { PDFUploader } from '@/components/pdf';
 import { usePDF } from '@/hooks';
 import { extractAllPages, type ExtractionProgress, type PDFDocumentProxy } from '@/lib/pdf/extractor';
-import { initializePDFJS, getPDFJS } from '@/lib/pdf/init';
+import { initializePDFJS, getPDFJS, isPDFJSInitialized } from '@/lib/pdf/init';
 
 interface ProcessingState {
   isProcessing: boolean;
@@ -32,6 +32,39 @@ export default function Home() {
     progress: null,
   });
   const [error, setError] = useState<string | null>(null);
+  const [isPDFReady, setIsPDFReady] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  // Pre-initialize PDF.js on page load
+  useEffect(() => {
+    let mounted = true;
+
+    const initPDF = async () => {
+      try {
+        setIsInitializing(true);
+        await initializePDFJS();
+        if (mounted) {
+          setIsPDFReady(true);
+          setIsInitializing(false);
+          console.log('PDF.js pre-initialized successfully');
+        }
+      } catch (err) {
+        if (mounted) {
+          console.error('Failed to pre-initialize PDF.js:', err);
+          setIsPDFReady(false);
+          setIsInitializing(false);
+          // Don't show error immediately - let user try to upload first
+          // Error will be shown if upload fails
+        }
+      }
+    };
+
+    initPDF();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const handleFileSelect = useCallback(
     async (file: File) => {
@@ -47,15 +80,35 @@ export default function Home() {
             totalPages: 0,
             percentage: 0,
             phase: 'loading',
-            message: 'Loading PDF document...',
+            message: 'Initializing PDF processor...',
           },
         });
 
-        // Initialize PDF.js (ensures worker is configured)
-        await initializePDFJS();
+        // Ensure PDF.js is initialized (should already be from useEffect, but double-check)
+        let pdfjs;
+        if (isPDFReady && isPDFJSInitialized()) {
+          // Already initialized, just get the module
+          pdfjs = await getPDFJS();
+        } else {
+          // Not initialized yet, try to initialize now
+          try {
+            await initializePDFJS();
+            pdfjs = await getPDFJS();
+            setIsPDFReady(true);
+          } catch {
+            // If initialization fails, try one more time with reset
+            const { resetPDFJS } = await import('@/lib/pdf/init');
+            resetPDFJS();
+            await new Promise(resolve => setTimeout(resolve, 300));
+            await initializePDFJS();
+            pdfjs = await getPDFJS();
+            setIsPDFReady(true);
+          }
+        }
         
-        // Get PDF.js module (already initialized)
-        const pdfjs = await getPDFJS();
+        if (!pdfjs) {
+          throw new Error('Failed to initialize PDF.js');
+        }
 
         // Read file as ArrayBuffer
         const arrayBuffer = await file.arrayBuffer();
@@ -120,7 +173,7 @@ export default function Home() {
           },
         });
 
-        // Save document to IndexedDB
+        // Save document to IndexedDB (including PDF blob for viewing)
         const documentId = await saveDocument(
           {
             title: file.name.replace('.pdf', ''),
@@ -128,11 +181,9 @@ export default function Home() {
             uploadDate: new Date(),
             fileSize: file.size,
           },
-          pages
+          pages,
+          file // Store the PDF blob for viewing later
         );
-
-        // Store file in sessionStorage for viewer (temporary solution)
-        sessionStorage.setItem('pdfFile', URL.createObjectURL(file));
 
         // Navigate to viewer
         router.push(`/viewer?id=${documentId}`);
@@ -141,6 +192,8 @@ export default function Home() {
         
         // Provide user-friendly error messages
         let errorMessage = 'Failed to process PDF';
+        let shouldSuggestRefresh = false;
+        
         if (err instanceof Error) {
           const errorMsg = err.message.toLowerCase();
           
@@ -148,11 +201,20 @@ export default function Home() {
             errorMessage = 'This PDF is password-protected. Please remove the password and try again.';
           } else if (errorMsg.includes('invalid pdf') || errorMsg.includes('corrupted')) {
             errorMessage = 'This file is not a valid PDF or is corrupted.';
-          } else if (errorMsg.includes('object.defineproperty') || errorMsg.includes('non-object')) {
-            errorMessage = 'PDF processing failed to initialize. Please refresh the page and try again.';
-            console.error('PDF.js initialization error - this may require a page refresh');
+          } else if (
+            errorMsg.includes('object.defineproperty') || 
+            errorMsg.includes('non-object') ||
+            errorMsg.includes('initialization failed') ||
+            errorMsg.includes('globalworkeroptions')
+          ) {
+            errorMessage = 'PDF processor failed to initialize. Please refresh the page and try again.';
+            shouldSuggestRefresh = true;
+            console.error('PDF.js initialization error - user should refresh the page');
           } else if (errorMsg.includes('worker')) {
             errorMessage = 'PDF worker failed to load. Please check your internet connection and try again.';
+          } else if (errorMsg.includes('failed to initialize')) {
+            errorMessage = 'PDF processor initialization failed. Please refresh the page and try again.';
+            shouldSuggestRefresh = true;
           } else {
             errorMessage = err.message || 'An unexpected error occurred while processing the PDF.';
           }
@@ -162,9 +224,15 @@ export default function Home() {
         
         setError(errorMessage);
         setProcessingState({ isProcessing: false, progress: null });
+        
+        // If initialization failed, suggest refresh after a delay
+        if (shouldSuggestRefresh) {
+          // The error message already suggests refresh, but we could add a button
+          console.warn('Consider refreshing the page to reinitialize PDF.js');
+        }
       }
     },
-    [saveDocument, router]
+    [saveDocument, router, isPDFReady]
   );
 
   const { isProcessing, progress } = processingState;
@@ -198,7 +266,16 @@ export default function Home() {
           <div className="w-full transform transition-all duration-500 hover:scale-[1.01] hover:shadow-2xl shadow-primary-500/10">
             <div className="glass-panel rounded-2xl p-1">
               <div className="bg-black/40 rounded-xl p-8 md:p-12 border border-white/5">
-                <PDFUploader onFileSelect={handleFileSelect} isLoading={isProcessing} />
+                <PDFUploader 
+                  onFileSelect={handleFileSelect} 
+                  isLoading={isProcessing || isInitializing}
+                />
+                
+                {isInitializing && !isProcessing && (
+                  <div className="mt-4 text-center">
+                    <p className="text-sm text-gray-400 animate-pulse">Initializing PDF processor...</p>
+                  </div>
+                )}
                 
                 {isProcessing && (
                   <div className="mt-8 text-center space-y-4">
@@ -237,12 +314,22 @@ export default function Home() {
 
           {error && (
             <div className="mt-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 backdrop-blur-sm animate-fade-in">
-              <span className="flex items-center gap-2">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                {error}
-              </span>
+                <div className="flex-1">
+                  <p className="mb-2">{error}</p>
+                  {(error.includes('refresh') || error.includes('initialization')) && (
+                    <button
+                      onClick={() => window.location.reload()}
+                      className="px-4 py-2 text-sm font-medium bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 rounded-lg transition-colors"
+                    >
+                      Refresh Page
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>

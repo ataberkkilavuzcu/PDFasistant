@@ -68,3 +68,36 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #404040;
 }
+
+/* PDF Search Highlight Styles */
+.pdf-search-highlight {
+  background-color: rgba(251, 191, 36, 0.5) !important; /* Yellow highlight - more opaque */
+  color: inherit !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-radius: 2px !important;
+  /* Remove box-shadow to eliminate shadowy appearance */
+  box-shadow: none !important;
+  /* Ensure text remains readable */
+  font-weight: inherit !important;
+  text-shadow: none !important;
+}
+
+/* Custom scrollbar for PDF viewer */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #404040;
+  border-radius: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #505050;
+}
