@@ -99,10 +99,10 @@ export function PDFViewerClient(props: PDFViewerProps) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full bg-[#1a1a1a]">
+      <div className="flex items-center justify-center h-full bg-neutral-950">
         <div className="text-center">
-          <div className="w-12 h-12 rounded-full border-4 border-white/10 border-t-primary-500 animate-spin mx-auto mb-4" />
-          <p className="text-gray-400 text-sm">Loading PDF viewer...</p>
+          <div className="w-12 h-12 rounded-full border-4 border-neutral-800 border-t-accent-500 animate-spin mx-auto mb-4" />
+          <p className="text-neutral-400 text-sm">Loading PDF viewer...</p>
         </div>
       </div>
     );
@@ -110,13 +110,13 @@ export function PDFViewerClient(props: PDFViewerProps) {
 
   if (error || !Document || !Page) {
     return (
-      <div className="flex items-center justify-center h-full bg-[#1a1a1a] text-red-400">
+      <div className="flex items-center justify-center h-full bg-neutral-950 text-red-400">
         <div className="text-center p-8">
           <svg className="w-16 h-16 mx-auto mb-4 text-red-500/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
-          <p className="text-lg font-medium mb-2">Failed to load PDF viewer</p>
-          <p className="text-sm text-gray-500">{error || 'Unknown error occurred'}</p>
+          <p className="text-lg font-medium mb-2 text-red-300">Failed to load PDF viewer</p>
+          <p className="text-sm text-neutral-500">{error || 'Unknown error occurred'}</p>
         </div>
       </div>
     );
@@ -415,11 +415,9 @@ function PDFViewerImpl({
               const matchEnd = match.index + match[0].length;
               
               // Find which nodes this match spans
+              // Two intervals [matchStart, matchEnd) and [start, end) overlap if: matchStart < end && matchEnd > start
               const affectedNodes = nodeOffsets.filter(
-                ({ start, end }) => 
-                  (matchStart >= start && matchStart < end) || // Match starts in this node
-                  (matchEnd > start && matchEnd <= end) ||     // Match ends in this node
-                  (matchStart < start && matchEnd > end)        // Match spans entire node
+                ({ start, end }) => matchStart < end && matchEnd > start
               );
               
               // Record this match for each affected node
@@ -607,9 +605,9 @@ function PDFViewerImpl({
 
   if (!file) {
     return (
-      <div className="flex items-center justify-center h-full bg-[#1a1a1a] text-gray-400">
+      <div className="flex items-center justify-center h-full bg-neutral-950 text-neutral-400">
         <div className="text-center">
-          <svg className="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-16 h-16 mx-auto mb-4 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <p>No PDF loaded</p>
@@ -637,54 +635,54 @@ function PDFViewerImpl({
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#1a1a1a]">
+    <div className="flex flex-col h-full bg-neutral-950">
       {/* Zoom Controls */}
-      <div className="flex items-center justify-center gap-2 py-2 px-4 bg-[#252525] border-b border-white/10">
-        <div className="flex items-center gap-1 bg-black/30 rounded-lg p-1">
+      <div className="flex items-center justify-center gap-2 py-2 px-4 bg-neutral-900/80 backdrop-blur-sm border-b border-neutral-800">
+        <div className="flex items-center gap-1 bg-neutral-800/50 rounded-lg p-1 border border-neutral-700/50">
           <button
             onClick={handleZoomOut}
             disabled={zoom <= MIN_ZOOM}
-            className="p-1.5 rounded hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="p-1.5 rounded hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             title="Zoom out (Ctrl+-)"
           >
-            <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
             </svg>
           </button>
-          
+
           <select
             value={zoom}
             onChange={(e) => handleZoomSelect(parseFloat(e.target.value))}
-            className="bg-transparent text-gray-300 text-sm font-medium px-2 py-1 focus:outline-none cursor-pointer"
+            className="bg-transparent text-neutral-300 text-sm font-medium px-2 py-1 focus:outline-none cursor-pointer"
           >
             {ZOOM_LEVELS.map((level) => (
-              <option key={level} value={level} className="bg-[#252525] text-white">
+              <option key={level} value={level} className="bg-neutral-800 text-neutral-100">
                 {Math.round(level * 100)}%
               </option>
             ))}
           </select>
-          
+
           <button
             onClick={handleZoomIn}
             disabled={zoom >= MAX_ZOOM}
-            className="p-1.5 rounded hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="p-1.5 rounded hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             title="Zoom in (Ctrl++)"
           >
-            <svg className="w-4 h-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
           </button>
         </div>
 
-        <div className="w-px h-6 bg-white/10" />
+        <div className="w-px h-6 bg-neutral-700" />
 
         <div className="flex items-center gap-1">
           <button
             onClick={handleFitWidth}
             className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-              zoomMode === 'fit-width' 
-                ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30' 
-                : 'text-gray-400 hover:bg-white/10 hover:text-white'
+              zoomMode === 'fit-width'
+                ? 'bg-accent-500/20 text-accent-400 border border-accent-500/30'
+                : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'
             }`}
             title="Fit to width"
           >
@@ -693,9 +691,9 @@ function PDFViewerImpl({
           <button
             onClick={handleFitPage}
             className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-              zoomMode === 'fit-page' 
-                ? 'bg-primary-500/20 text-primary-400 border border-primary-500/30' 
-                : 'text-gray-400 hover:bg-white/10 hover:text-white'
+              zoomMode === 'fit-page'
+                ? 'bg-accent-500/20 text-accent-400 border border-accent-500/30'
+                : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'
             }`}
             title="Fit page"
           >
@@ -703,7 +701,7 @@ function PDFViewerImpl({
           </button>
           <button
             onClick={handleZoomReset}
-            className="px-3 py-1.5 text-xs font-medium text-gray-400 hover:bg-white/10 hover:text-white rounded transition-colors"
+            className="px-3 py-1.5 text-xs font-medium text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 rounded transition-colors"
             title="Reset zoom (Ctrl+0)"
           >
             Reset
@@ -713,8 +711,8 @@ function PDFViewerImpl({
         {/* Page info */}
         {!isLoading && numPages > 0 && (
           <>
-            <div className="w-px h-6 bg-white/10" />
-            <span className="text-xs text-gray-500">
+            <div className="w-px h-6 bg-neutral-700" />
+            <span className="text-xs text-neutral-500">
               Page {currentPage} of {numPages}
             </span>
           </>
@@ -722,7 +720,7 @@ function PDFViewerImpl({
       </div>
 
       {/* PDF Document */}
-      <div 
+      <div
         ref={containerRef}
         className="flex-1 overflow-auto custom-scrollbar"
       >
@@ -732,8 +730,8 @@ function PDFViewerImpl({
               <svg className="w-16 h-16 mx-auto mb-4 text-red-500/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
-              <p className="text-lg font-medium mb-2">{error}</p>
-              <p className="text-sm text-gray-500">Please try uploading a different file</p>
+              <p className="text-lg font-medium mb-2 text-red-300">{error}</p>
+              <p className="text-sm text-neutral-500">Please try uploading a different file</p>
             </div>
           </div>
         ) : (
@@ -745,8 +743,8 @@ function PDFViewerImpl({
             loading={
               <div className="flex items-center justify-center h-64">
                 <div className="text-center">
-                  <div className="w-10 h-10 rounded-full border-4 border-white/10 border-t-primary-500 animate-spin mx-auto mb-3" />
-                  <p className="text-gray-400 text-sm">Loading document...</p>
+                  <div className="w-10 h-10 rounded-full border-4 border-neutral-800 border-t-accent-500 animate-spin mx-auto mb-3" />
+                  <p className="text-neutral-400 text-sm">Loading document...</p>
                 </div>
               </div>
             }
@@ -757,7 +755,7 @@ function PDFViewerImpl({
                 key={`page_${index + 1}`}
                 ref={setPageRef(index + 1)}
                 className={`relative shadow-2xl ${
-                  currentPage === index + 1 ? 'ring-2 ring-primary-500/50' : ''
+                  currentPage === index + 1 ? 'ring-2 ring-accent-500/50' : ''
                 }`}
               >
                 <Page
@@ -767,8 +765,8 @@ function PDFViewerImpl({
                   renderTextLayer={true}
                   renderAnnotationLayer={true}
                   loading={
-                    <div className="flex items-center justify-center bg-gray-800 min-h-[400px] min-w-[300px]">
-                      <div className="w-8 h-8 rounded-full border-2 border-white/10 border-t-primary-500 animate-spin" />
+                    <div className="flex items-center justify-center bg-neutral-800 min-h-[400px] min-w-[300px]">
+                      <div className="w-8 h-8 rounded-full border-2 border-neutral-700 border-t-accent-500 animate-spin" />
                     </div>
                   }
                   className="bg-white"
