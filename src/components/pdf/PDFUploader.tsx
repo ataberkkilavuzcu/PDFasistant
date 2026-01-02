@@ -7,7 +7,7 @@
  * - Drag & drop support with visual feedback
  */
 
-import { useCallback, useState, useRef } from 'react';
+import { useCallback, useState, useRef, useEffect } from 'react';
 
 /** PDF magic bytes signature */
 const PDF_MAGIC_BYTES = [0x25, 0x50, 0x44, 0x46]; // %PDF
@@ -53,15 +53,49 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function PDFUploader({ 
-  onFileSelect, 
+export function PDFUploader({
+  onFileSelect,
   isLoading = false,
-  maxSizeMB = DEFAULT_MAX_SIZE_MB 
+  maxSizeMB = DEFAULT_MAX_SIZE_MB
 }: PDFUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasInteractedRef = useRef(false);
+
+  // Reset file input on mount and when page becomes visible/focused
+  // This handles navigation back from the viewer page
+  useEffect(() => {
+    const resetInput = () => {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    };
+
+    // Reset on mount
+    resetInput();
+
+    // Reset when window regains focus (user returns from another tab)
+    const handleFocus = () => {
+      resetInput();
+    };
+
+    // Reset when page becomes visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !hasInteractedRef.current) {
+        resetInput();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   const maxSizeBytes = maxSizeMB * 1024 * 1024;
 
@@ -73,9 +107,9 @@ export function PDFUploader({
 
     // Check file size
     if (file.size > maxSizeBytes) {
-      return { 
-        valid: false, 
-        error: `File size (${formatFileSize(file.size)}) exceeds ${maxSizeMB}MB limit` 
+      return {
+        valid: false,
+        error: `File size (${formatFileSize(file.size)}) exceeds ${maxSizeMB}MB limit`
       };
     }
 
@@ -97,18 +131,30 @@ export function PDFUploader({
     async (file: File) => {
       setIsValidating(true);
       setError(null);
-      
+
       try {
         const result = await validateFile(file);
-        
+
         if (!result.valid) {
           setError(result.error || 'Invalid file');
+          // Reset input on validation error
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
           return;
         }
-        
+
         onFileSelect(file);
+        // Reset input after successful file selection
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Validation failed');
+        // Reset input on error
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
       } finally {
         setIsValidating(false);
       }
@@ -150,6 +196,11 @@ export function PDFUploader({
   );
 
   const handleClick = useCallback(() => {
+    // Reset input before opening file dialog
+    // This ensures the onChange event fires even if selecting the same file
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     fileInputRef.current?.click();
   }, []);
 
@@ -161,11 +212,11 @@ export function PDFUploader({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         className={`
-          relative border-2 border-dashed rounded-xl p-16 text-center cursor-pointer
-          transition-all duration-300 ease-in-out group
+          relative border-2 border-dashed rounded-xl p-12 md:p-16 text-center cursor-pointer
+          transition-all duration-300 ease-out group
           ${isDragging
-            ? 'border-primary-500 bg-primary-500/10 scale-[1.02]'
-            : 'border-white/10 hover:border-primary-500/50 hover:bg-white/5'
+            ? 'border-accent-500 bg-accent-500/5 scale-[1.01]'
+            : 'border-neutral-700 hover:border-accent-500/50 hover:bg-neutral-800/30'
           }
           ${isLoading || isValidating ? 'opacity-50 pointer-events-none' : ''}
         `}
@@ -180,8 +231,8 @@ export function PDFUploader({
 
         {isLoading || isValidating ? (
           <div className="flex flex-col items-center gap-4">
-            <div className="w-16 h-16 rounded-full border-4 border-white/10 border-t-primary-500 animate-spin"></div>
-            <p className="text-gray-400 animate-pulse">
+            <div className="w-16 h-16 border-4 border-neutral-700 border-t-accent-500 rounded-full animate-spin"></div>
+            <p className="text-neutral-400 animate-pulse">
               {isValidating ? 'Validating file...' : 'Processing PDF...'}
             </p>
           </div>
@@ -190,12 +241,12 @@ export function PDFUploader({
             <div className="flex flex-col items-center gap-6 relative z-10">
               <div className={`
                 w-20 h-20 rounded-2xl flex items-center justify-center
-                bg-gradient-to-br from-primary-500/20 to-purple-500/20
-                border border-white/10 shadow-xl shadow-primary-500/5
-                group-hover:scale-110 transition-transform duration-300
+                bg-gradient-to-br from-accent-500/20 to-accent-600/10
+                border border-neutral-700 shadow-lg
+                group-hover:scale-110 group-hover:border-accent-500/30 transition-all duration-300
               `}>
                 <svg
-                  className="w-10 h-10 text-primary-400 group-hover:text-primary-300 transition-colors"
+                  className="w-10 h-10 text-accent-500 transition-colors"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -208,27 +259,35 @@ export function PDFUploader({
                   />
                 </svg>
               </div>
-              <div className="space-y-2">
-                <p className="text-xl font-medium text-white group-hover:text-primary-200 transition-colors">
+              <div className="space-y-3">
+                <p className="text-xl font-semibold text-neutral-100 group-hover:text-neutral-50 transition-colors">
                   Drop your PDF here
                 </p>
-                <p className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors">
-                  or click to browse <span className="px-2 py-0.5 rounded bg-white/10 text-xs">MAX 50MB</span>
+                <p className="text-sm text-neutral-400 group-hover:text-neutral-300 transition-colors">
+                  or click to browse
                 </p>
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-neutral-800/50 border border-neutral-700/50">
+                  <svg className="w-4 h-4 text-neutral-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="text-xs text-neutral-400">Max {maxSizeMB}MB</span>
+                </div>
               </div>
             </div>
-            
-            {/* Background glow effect on hover */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-primary-500/5 via-transparent to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl pointer-events-none"></div>
+
+            {/* Subtle background effect on hover */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-accent-500/0 via-accent-500/[0.02] to-accent-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl pointer-events-none"></div>
           </>
         )}
       </div>
 
       {error && (
-        <p className="mt-4 text-sm text-red-400 text-center animate-fade-in flex items-center justify-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
-          {error}
-        </p>
+        <div className="mt-4 flex items-center justify-center gap-2 text-sm text-red-400 animate-slide-down">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>{error}</span>
+        </div>
       )}
     </div>
   );

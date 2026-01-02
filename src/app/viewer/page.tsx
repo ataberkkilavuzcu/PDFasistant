@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
  * - AI chat with page context
  */
 
-import { useEffect, useState, useCallback, useMemo, Suspense } from 'react';
+import { useEffect, useState, useCallback, useMemo, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PDFViewer, PageNavigator } from '@/components/pdf';
 import { ChatPanel } from '@/components/chat';
@@ -29,11 +29,13 @@ function ViewerContent() {
 
   const { document, loadDocument, isLoading: isPDFLoading, getPDFBlob } = usePDF();
   const { messages, isLoading: isChatLoading, error: chatError, sendMessage, loadHistory } = useChat();
-  
+
   const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  // Keep track of the current blob URL to properly revoke it
+  const blobUrlRef = useRef<string | null>(null);
 
   const pages = useMemo(() => document?.pages || [], [document?.pages]);
   const {
@@ -53,32 +55,39 @@ function ViewerContent() {
 
   // Load PDF blob for viewing once document is loaded
   useEffect(() => {
-    let blobUrl: string | null = null;
-
     const loadPDFBlob = async () => {
       if (!documentId || !document) return;
-      
+
+      // Revoke previous blob URL before creating a new one
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
+
       // First check if document has blob inline
       if (document.pdfBlob) {
-        blobUrl = URL.createObjectURL(document.pdfBlob);
+        const blobUrl = URL.createObjectURL(document.pdfBlob);
+        blobUrlRef.current = blobUrl;
         setPdfFileUrl(blobUrl);
         return;
       }
-      
+
       // Otherwise try to get it from DB
       const blob = await getPDFBlob(documentId);
       if (blob) {
-        blobUrl = URL.createObjectURL(blob);
+        const blobUrl = URL.createObjectURL(blob);
+        blobUrlRef.current = blobUrl;
         setPdfFileUrl(blobUrl);
       }
     };
 
     loadPDFBlob();
 
-    // Cleanup blob URL on unmount or when deps change
+    // Cleanup blob URL on unmount
     return () => {
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
       }
     };
   }, [documentId, document, getPDFBlob]);
@@ -129,15 +138,18 @@ function ViewerContent() {
   // Redirect if no document
   if (!documentId) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background text-foreground">
-        <div className="text-center glass-panel p-8 rounded-2xl">
-          <svg className="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          <p className="text-gray-400 mb-4 text-lg">No document loaded</p>
+      <div className="flex items-center justify-center h-screen bg-neutral-950">
+        <div className="text-center card p-8 max-w-md mx-4">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-neutral-800 flex items-center justify-center border border-neutral-700">
+            <svg className="w-8 h-8 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-neutral-100 mb-2">No document loaded</h3>
+          <p className="text-sm text-neutral-400 mb-6">Upload a PDF to get started</p>
           <button
             onClick={() => router.push('/')}
-            className="px-6 py-2.5 bg-primary-600 text-white rounded-lg hover:bg-primary-500 transition-colors shadow-lg shadow-primary-500/20 font-medium"
+            className="btn-primary"
           >
             Upload a PDF
           </button>
@@ -147,15 +159,15 @@ function ViewerContent() {
   }
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden selection:bg-primary-500/30">
+    <div className="flex h-screen bg-neutral-950 overflow-hidden">
       {/* Left side - PDF Viewer */}
       <div className="flex-1 flex flex-col min-w-0 relative">
         {/* Top Bar: Back button, Title, Search */}
-        <div className="h-14 bg-[#1e1e1e] border-b border-white/10 flex items-center px-4 z-20 gap-4">
+        <div className="h-16 bg-neutral-900/80 backdrop-blur-xl border-b border-neutral-800 flex items-center px-4 z-20 gap-4">
           {/* Back button */}
           <button
             onClick={() => router.push('/')}
-            className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+            className="p-2 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 transition-colors"
             title="Back to documents"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -165,11 +177,11 @@ function ViewerContent() {
 
           {/* Document title */}
           <div className="flex-shrink-0 max-w-[200px]">
-            <h1 className="text-sm font-medium text-white truncate" title={document?.metadata.title}>
+            <h1 className="text-sm font-medium text-neutral-100 truncate" title={document?.metadata.title}>
               {document?.metadata.title || 'Loading...'}
             </h1>
             {document && (
-              <p className="text-xs text-gray-500">{document.metadata.pageCount} pages</p>
+              <p className="text-xs text-neutral-500">{document.metadata.pageCount} pages</p>
             )}
           </div>
 
@@ -186,17 +198,12 @@ function ViewerContent() {
         </div>
 
         {/* PDF Viewer Container */}
-        <div className="flex-1 overflow-hidden relative">
+        <div className="flex-1 overflow-hidden relative bg-neutral-950">
           {isPDFLoading ? (
-            <div className="flex items-center justify-center h-full bg-[#1a1a1a]">
+            <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <div className="relative">
-                  <div className="w-12 h-12 rounded-full border-4 border-white/10 border-t-primary-500 animate-spin" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
-                  </div>
-                </div>
-                <p className="mt-4 text-gray-400 text-sm">Loading document...</p>
+                <div className="w-12 h-12 border-4 border-neutral-800 border-t-accent-500 rounded-full animate-spin mx-auto mb-4"></div>
+                <p className="text-sm text-neutral-400">Loading document...</p>
               </div>
             </div>
           ) : pdfFileUrl ? (
@@ -208,13 +215,15 @@ function ViewerContent() {
               searchQuery={searchQuery}
             />
           ) : (
-            <div className="flex items-center justify-center h-full bg-[#1a1a1a] text-gray-400">
+            <div className="flex items-center justify-center h-full text-neutral-400">
               <div className="text-center">
-                <svg className="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <p className="text-lg">Loading PDF...</p>
-                <p className="text-sm text-gray-500 mt-1">Please wait while we prepare your document</p>
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-neutral-900 flex items-center justify-center border border-neutral-800">
+                  <svg className="w-8 h-8 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <p className="text-lg font-medium text-neutral-300 mb-1">Loading PDF...</p>
+                <p className="text-sm text-neutral-500">Please wait while we prepare your document</p>
               </div>
             </div>
           )}
@@ -223,7 +232,7 @@ function ViewerContent() {
         {/* Floating Page Navigator */}
         {totalPages > 0 && (
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
-            <div className="glass-panel rounded-2xl px-4 py-2 shadow-2xl border border-white/10">
+            <div className="glass-panel rounded-2xl px-4 py-2 shadow-2xl">
               <PageNavigator
                 currentPage={currentPage}
                 totalPages={totalPages}
@@ -236,7 +245,7 @@ function ViewerContent() {
       </div>
 
       {/* Right side - Chat Panel */}
-      <div className="w-[400px] flex-shrink-0 border-l border-white/10 bg-[#1e1e1e] flex flex-col">
+      <div className="w-[400px] flex-shrink-0 border-l border-neutral-800 bg-neutral-900/30 backdrop-blur-sm flex flex-col">
         <ChatPanel
           messages={messages}
           isLoading={isChatLoading}
@@ -252,10 +261,10 @@ function ViewerContent() {
 export default function ViewerPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center h-screen bg-background">
+      <div className="flex items-center justify-center h-screen bg-neutral-950">
         <div className="text-center">
-          <div className="w-12 h-12 rounded-full border-4 border-white/10 border-t-primary-500 animate-spin mx-auto" />
-          <p className="mt-4 text-gray-400 text-sm">Loading viewer...</p>
+          <div className="w-12 h-12 border-4 border-neutral-800 border-t-accent-500 rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-sm text-neutral-400">Loading viewer...</p>
         </div>
       </div>
     }>
