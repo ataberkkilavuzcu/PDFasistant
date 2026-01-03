@@ -94,27 +94,17 @@ export default function Home() {
           },
         });
 
-        // Ensure PDF.js is initialized (should already be from useEffect, but double-check)
-        let pdfjs;
-        if (isPDFReady && isPDFJSInitialized()) {
-          // Already initialized, just get the module
-          pdfjs = await getPDFJS();
-        } else {
-          // Not initialized yet, try to initialize now
-          try {
-            await initializePDFJS();
-            pdfjs = await getPDFJS();
-            setIsPDFReady(true);
-          } catch {
-            // If initialization fails, try one more time with reset
-            const { resetPDFJS } = await import('@/lib/pdf/init');
-            resetPDFJS();
-            await new Promise(resolve => setTimeout(resolve, 300));
-            await initializePDFJS();
-            pdfjs = await getPDFJS();
-            setIsPDFReady(true);
-          }
-        }
+        // CRITICAL: Always reset PDF.js state before processing a new file
+        // This ensures clean state after returning from viewer or subsequent uploads
+        const { resetPDFJS } = await import('@/lib/pdf/init');
+        resetPDFJS();
+        // Allow time for cleanup to complete
+        await new Promise(resolve => setTimeout(resolve, 150));
+
+        // Initialize PDF.js with fresh state
+        await initializePDFJS();
+        const pdfjs = await getPDFJS();
+        setIsPDFReady(true);
         
         if (!pdfjs) {
           throw new Error('Failed to initialize PDF.js');
@@ -242,7 +232,7 @@ export default function Home() {
         }
       }
     },
-    [saveDocument, router, isPDFReady]
+    [saveDocument, router]
   );
 
   const { isProcessing, progress } = processingState;
