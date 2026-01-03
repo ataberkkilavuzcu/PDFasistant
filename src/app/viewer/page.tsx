@@ -186,8 +186,8 @@ function ViewerContent() {
     return (
       <div className="flex items-center justify-center h-screen bg-neutral-950">
         <div className="text-center card p-8 max-w-md mx-4">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-neutral-800 flex items-center justify-center border border-neutral-700">
-            <svg className="w-8 h-8 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-primary-500/20 to-accent-500/10 flex items-center justify-center border border-primary-500/20 ring-1 ring-primary-500/20">
+            <svg className="w-8 h-8 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           </div>
@@ -195,7 +195,7 @@ function ViewerContent() {
           <p className="text-sm text-neutral-400 mb-6">Upload a PDF to get started</p>
           <button
             onClick={() => router.push('/')}
-            className="btn-primary"
+            className="px-6 py-2 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg hover:from-primary-500 hover:to-primary-600 transition-all premium-shadow"
           >
             Upload a PDF
           </button>
@@ -209,11 +209,11 @@ function ViewerContent() {
       {/* Left side - PDF Viewer */}
       <div className="flex-1 flex flex-col min-w-0 relative">
         {/* Top Bar: Back button, Title, Search */}
-        <div className="h-16 bg-neutral-900/80 backdrop-blur-xl border-b border-neutral-800 flex items-center px-4 z-20 gap-4">
+        <div className="h-16 bg-gradient-to-r from-neutral-900/90 to-neutral-900/80 backdrop-blur-xl border-b border-neutral-800 flex items-center px-4 z-20 gap-4">
           {/* Back button */}
           <button
             onClick={() => router.push('/')}
-            className="p-2 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 transition-colors"
+            className="p-2 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-primary-400 transition-all hover:premium-shadow"
             title="Back to documents"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -248,7 +248,7 @@ function ViewerContent() {
           {isPDFLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <div className="w-12 h-12 border-4 border-neutral-800 border-t-accent-500 rounded-full animate-spin mx-auto mb-4"></div>
+                <div className="w-12 h-12 border-4 border-neutral-800 border-t-primary-500 rounded-full animate-spin mx-auto mb-4"></div>
                 <p className="text-sm text-neutral-400">Loading document...</p>
               </div>
             </div>
@@ -263,8 +263,8 @@ function ViewerContent() {
           ) : (
             <div className="flex items-center justify-center h-full text-neutral-400">
               <div className="text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-neutral-900 flex items-center justify-center border border-neutral-800">
-                  <svg className="w-8 h-8 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-primary-500/20 to-accent-500/10 flex items-center justify-center border border-primary-500/20 ring-1 ring-primary-500/20">
+                  <svg className="w-8 h-8 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
@@ -278,7 +278,7 @@ function ViewerContent() {
         {/* Floating Page Navigator */}
         {totalPages > 0 && (
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
-            <div className="glass-panel rounded-2xl px-4 py-2 shadow-2xl">
+            <div className="glass-panel rounded-2xl px-4 py-2 premium-shadow-lg">
               <PageNavigator
                 currentPage={currentPage}
                 totalPages={totalPages}
@@ -291,7 +291,7 @@ function ViewerContent() {
       </div>
 
       {/* Right side - Chat Panel */}
-      <div className="w-[400px] flex-shrink-0 border-l border-neutral-800 bg-neutral-900/30 backdrop-blur-sm flex flex-col">
+      <div className="w-[400px] flex-shrink-0 border-l border-neutral-800 bg-gradient-to-b from-neutral-900/30 to-neutral-900/20 backdrop-blur-sm flex flex-col">
         <ChatPanel
           messages={messages}
           isLoading={isChatLoading}
@@ -309,7 +309,7 @@ export default function ViewerPage() {
     <Suspense fallback={
       <div className="flex items-center justify-center h-screen bg-neutral-950">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-neutral-800 border-t-accent-500 rounded-full animate-spin mx-auto mb-4" />
+          <div className="w-12 h-12 border-4 border-neutral-800 border-t-primary-500 rounded-full animate-spin mx-auto mb-4" />
           <p className="text-sm text-neutral-400">Loading viewer...</p>
         </div>
       </div>

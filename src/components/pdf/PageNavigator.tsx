@@ -94,7 +94,7 @@ export function PageNavigator({
       <button
         onClick={handleFirst}
         disabled={currentPage <= 1}
-        className="p-2 text-white bg-white/10 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
+        className="p-2 text-white bg-white/10 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 hover:premium-shadow"
         aria-label="First page"
         title="First page (Home)"
       >
@@ -107,7 +107,7 @@ export function PageNavigator({
       <button
         onClick={handlePrevious}
         disabled={currentPage <= 1}
-        className="p-2 text-white bg-white/10 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
+        className="p-2 text-white bg-white/10 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 hover:premium-shadow"
         aria-label="Previous page"
         title="Previous page (←)"
       >
@@ -117,7 +117,7 @@ export function PageNavigator({
       </button>
 
       {/* Page input */}
-      <form onSubmit={handleInputSubmit} className="flex items-center gap-2 bg-black/30 rounded-lg px-3 py-1.5 border border-white/10">
+      <form onSubmit={handleInputSubmit} className="flex items-center gap-2 bg-gradient-to-r from-black/40 to-black/30 rounded-lg px-3 py-1.5 border border-white/10 premium-shadow">
         <input
           type="text"
           value={inputValue}
@@ -134,7 +134,7 @@ export function PageNavigator({
       <button
         onClick={handleNext}
         disabled={currentPage >= totalPages}
-        className="p-2 text-white bg-white/10 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
+        className="p-2 text-white bg-white/10 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 hover:premium-shadow"
         aria-label="Next page"
         title="Next page (→)"
       >
@@ -147,7 +147,7 @@ export function PageNavigator({
       <button
         onClick={handleLast}
         disabled={currentPage >= totalPages}
-        className="p-2 text-white bg-white/10 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
+        className="p-2 text-white bg-white/10 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 hover:premium-shadow"
         aria-label="Last page"
         title="Last page (End)"
       >
@@ -159,8 +159,8 @@ export function PageNavigator({
       {/* Keyboard hints */}
       {showKeyboardHints && (
         <div className="ml-2 text-xs text-gray-500 hidden md:block">
-          <span className="px-1.5 py-0.5 bg-white/5 rounded text-gray-400 mr-1">←</span>
-          <span className="px-1.5 py-0.5 bg-white/5 rounded text-gray-400">→</span>
+          <span className="px-1.5 py-0.5 bg-white/5 rounded text-gray-400 mr-1 border border-white/10">←</span>
+          <span className="px-1.5 py-0.5 bg-white/5 rounded text-gray-400 border border-white/10">→</span>
           <span className="ml-1">to navigate</span>
         </div>
       )}

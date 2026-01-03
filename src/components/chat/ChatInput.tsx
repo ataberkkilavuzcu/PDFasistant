@@ -69,14 +69,14 @@ export function ChatInput({
             placeholder={placeholder}
             disabled={isDisabled}
             rows={1}
-            className="w-full px-4 py-3 pr-12 border rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:bg-gray-50"
+            className="w-full px-4 py-3 pr-12 border rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent disabled:opacity-50 disabled:bg-gray-50 transition-all shadow-lg"
           />
         </div>
-        
+
         <button
           type="submit"
           disabled={isDisabled || !message.trim()}
-          className="px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex-shrink-0"
+          className="px-4 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl hover:from-primary-500 hover:to-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex-shrink-0 premium-shadow hover:premium-shadow-lg disabled:hover:premium-shadow"
           aria-label="Send message"
         >
           <svg
@@ -94,7 +94,7 @@ export function ChatInput({
           </svg>
         </button>
       </div>
-      
+
       <p className="text-xs text-gray-400 mt-2 text-center">
         Press Enter to send, Shift+Enter for new line
       </p>
