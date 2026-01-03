@@ -42,6 +42,12 @@ export default function Home() {
     const initPDF = async () => {
       try {
         setIsInitializing(true);
+        // Always reset PDF.js state before initialization to ensure clean state
+        const { resetPDFJS } = await import('@/lib/pdf/init');
+        resetPDFJS();
+        // Small delay to ensure cleanup completes
+        await new Promise(resolve => setTimeout(resolve, 50));
+
         await initializePDFJS();
         if (mounted) {
           setIsPDFReady(true);
@@ -63,6 +69,10 @@ export default function Home() {
 
     return () => {
       mounted = false;
+      // Reset PDF.js state when component unmounts to ensure clean state on remount
+      import('@/lib/pdf/init').then(({ resetPDFJS }) => {
+        resetPDFJS();
+      });
     };
   }, []);
 
