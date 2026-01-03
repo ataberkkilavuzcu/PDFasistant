@@ -17,7 +17,7 @@ import { useRouter } from 'next/navigation';
 import { PDFUploader } from '@/components/pdf';
 import { usePDF } from '@/hooks';
 import { extractAllPages, type ExtractionProgress, type PDFDocumentProxy } from '@/lib/pdf/extractor';
-import { initializePDFJS, getPDFJS, isPDFJSInitialized } from '@/lib/pdf/init';
+import { initializePDFJS, getPDFJS } from '@/lib/pdf/init';
 
 interface ProcessingState {
   isProcessing: boolean;
@@ -32,7 +32,6 @@ export default function Home() {
     progress: null,
   });
   const [error, setError] = useState<string | null>(null);
-  const [isPDFReady, setIsPDFReady] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
 
   // Pre-initialize PDF.js on page load
@@ -50,14 +49,12 @@ export default function Home() {
 
         await initializePDFJS();
         if (mounted) {
-          setIsPDFReady(true);
           setIsInitializing(false);
           console.log('PDF.js pre-initialized successfully');
         }
       } catch (err) {
         if (mounted) {
           console.error('Failed to pre-initialize PDF.js:', err);
-          setIsPDFReady(false);
           setIsInitializing(false);
           // Don't show error immediately - let user try to upload first
           // Error will be shown if upload fails

@@ -65,39 +65,81 @@ function ViewerContent() {
 
   // Load PDF blob for viewing once document is loaded
   useEffect(() => {
-    const loadPDFBlob = async () => {
-      if (!documentId || !document) return;
+    let isMounted = true;
+    let previousBlobUrl: string | null = null;
 
-      // Revoke previous blob URL before creating a new one
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = null;
+    const loadPDFBlob = async () => {
+      if (!documentId || !document) {
+        // Clear blob URL if no document
+        if (blobUrlRef.current) {
+          previousBlobUrl = blobUrlRef.current;
+          blobUrlRef.current = null;
+          setPdfFileUrl(null);
+          // Revoke after a delay to ensure PDF viewer has finished using it
+          setTimeout(() => {
+            if (previousBlobUrl) {
+              URL.revokeObjectURL(previousBlobUrl);
+              previousBlobUrl = null;
+            }
+          }, 100);
+        }
+        return;
       }
+
+      // Store the previous blob URL to revoke it later
+      previousBlobUrl = blobUrlRef.current;
 
       // First check if document has blob inline
       if (document.pdfBlob) {
         const blobUrl = URL.createObjectURL(document.pdfBlob);
-        blobUrlRef.current = blobUrl;
-        setPdfFileUrl(blobUrl);
+        if (isMounted) {
+          blobUrlRef.current = blobUrl;
+          setPdfFileUrl(blobUrl);
+          // Revoke previous blob URL after new one is set (with small delay)
+          if (previousBlobUrl) {
+            setTimeout(() => {
+              URL.revokeObjectURL(previousBlobUrl!);
+            }, 100);
+          }
+        } else {
+          // Component unmounted, revoke immediately
+          URL.revokeObjectURL(blobUrl);
+        }
         return;
       }
 
       // Otherwise try to get it from DB
       const blob = await getPDFBlob(documentId);
-      if (blob) {
+      if (blob && isMounted) {
         const blobUrl = URL.createObjectURL(blob);
         blobUrlRef.current = blobUrl;
         setPdfFileUrl(blobUrl);
+        // Revoke previous blob URL after new one is set (with small delay)
+        if (previousBlobUrl) {
+          setTimeout(() => {
+            URL.revokeObjectURL(previousBlobUrl!);
+          }, 100);
+        }
+      } else if (blob && !isMounted) {
+        // Component unmounted, revoke immediately
+        URL.revokeObjectURL(URL.createObjectURL(blob));
       }
     };
 
     loadPDFBlob();
 
-    // Cleanup blob URL on unmount
+    // Cleanup blob URL on unmount or when dependencies change
     return () => {
+      isMounted = false;
+      // Only revoke on unmount, not on dependency changes
+      // (dependency changes are handled in loadPDFBlob)
       if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
+        const urlToRevoke = blobUrlRef.current;
         blobUrlRef.current = null;
+        // Small delay to ensure any pending operations complete
+        setTimeout(() => {
+          URL.revokeObjectURL(urlToRevoke);
+        }, 100);
       }
     };
   }, [documentId, document, getPDFBlob]);
