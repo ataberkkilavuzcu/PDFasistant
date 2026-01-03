@@ -177,6 +177,9 @@ function PDFViewerImpl({
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const highlightRefs = useRef<Map<number, Set<HTMLElement>>>(new Map());
+  // Store PDF page objects for text content access
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pdfPageRefs = useRef<Map<number, any>>(new Map());
 
   // Reset state when file changes to ensure clean loading
   useEffect(() => {
@@ -187,6 +190,7 @@ function PDFViewerImpl({
       // Clear page refs when file changes
       pageRefs.current.clear();
       highlightRefs.current.clear();
+      pdfPageRefs.current.clear();
     }
   }, [file]);
 
@@ -273,242 +277,185 @@ function PDFViewerImpl({
     onZoomChange?.(DEFAULT_ZOOM);
   }, [onZoomChange]);
 
-  // Text highlighting effect - browser Ctrl+F style: finds and highlights ALL matches
-  // This effect properly restores text nodes before re-highlighting to ensure it works on every keystroke
+  // Text highlighting effect using PDF.js TextContent API
+  // This approach creates absolute positioned overlay highlights based on text positions
   useEffect(() => {
-    // Function to restore all text nodes from highlight spans
-    // This merges adjacent text nodes back together for proper searching
-    const restoreTextNodes = (textLayer: Element) => {
-      const highlightSpans = textLayer.querySelectorAll('.pdf-search-highlight');
-      
-      // First, replace all highlight spans with text nodes
-      highlightSpans.forEach((span) => {
-        const textContent = span.textContent || '';
-        const textNode = document.createTextNode(textContent);
-        if (span.parentNode) {
-          span.parentNode.replaceChild(textNode, span);
-        }
-      });
-      
-      // Then, merge adjacent text nodes that were split by highlighting
-      // This ensures searches work correctly across what was previously highlighted text
-      const allNodes = Array.from(textLayer.childNodes);
-      let i = 0;
-      while (i < allNodes.length - 1) {
-        const node1 = allNodes[i];
-        const node2 = allNodes[i + 1];
-        
-        // If both are text nodes and they're siblings, merge them
-        if (node1 instanceof Text && node2 instanceof Text && 
-            node1.parentNode === node2.parentNode) {
-          const mergedText = node1.textContent + node2.textContent;
-          const mergedNode = document.createTextNode(mergedText);
-          if (node1.parentNode) {
-            node1.parentNode.replaceChild(mergedNode, node1);
-            node2.remove();
-          }
-          allNodes[i] = mergedNode;
-          allNodes.splice(i + 1, 1);
-        } else {
-          i++;
-        }
-      }
-    };
-
-    // Function to get all text nodes (excluding those inside highlight spans)
-    const getAllTextNodes = (textLayer: Element): Text[] => {
-      const textNodes: Text[] = [];
-      const walker = document.createTreeWalker(
-        textLayer,
-        NodeFilter.SHOW_TEXT,
-        {
-          acceptNode: (node) => {
-            // Reject nodes inside highlight spans
-            let parent = node.parentElement;
-            while (parent && parent !== textLayer) {
-              if (parent.classList.contains('pdf-search-highlight')) {
-                return NodeFilter.FILTER_REJECT;
-              }
-              parent = parent.parentElement;
-            }
-            return NodeFilter.FILTER_ACCEPT;
-          }
-        }
-      );
-
-      let node;
-      while ((node = walker.nextNode())) {
-        if (node instanceof Text && node.textContent) {
-          textNodes.push(node);
-        }
-      }
-      return textNodes;
-    };
+    // Clear all existing highlights
+    highlightRefs.current.forEach((highlights) => {
+      highlights.forEach((el) => el.remove());
+    });
+    highlightRefs.current.clear();
 
     // Clear highlights if query is empty
     if (!searchQuery || !searchQuery.trim()) {
-      pageRefs.current.forEach((pageElement) => {
-        const textLayer = pageElement.querySelector('.react-pdf__Page__textContent');
-        if (textLayer) {
-          restoreTextNodes(textLayer);
-        }
-      });
-      highlightRefs.current.clear();
       return;
     }
 
     const normalizedQuery = searchQuery.toLowerCase().trim();
     if (normalizedQuery.length === 0) {
-      pageRefs.current.forEach((pageElement) => {
-        const textLayer = pageElement.querySelector('.react-pdf__Page__textContent');
-        if (textLayer) {
-          restoreTextNodes(textLayer);
-        }
-      });
-      highlightRefs.current.clear();
       return;
     }
 
-    const escapedQuery = normalizedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const queryRegex = new RegExp(`(${escapedQuery})`, 'gi');
+    // Process each page that has been loaded
+    const processPage = async (pageNum: number) => {
+      const pdfPage = pdfPageRefs.current.get(pageNum);
+      const pageElement = pageRefs.current.get(pageNum);
+      if (!pdfPage || !pageElement) return;
 
-    // Use a small delay to ensure text layer is ready, then use requestAnimationFrame for DOM sync
-    const timeoutId = setTimeout(() => {
-      // Step 1: Restore all text nodes from previous highlights FIRST (for all pages)
-      pageRefs.current.forEach((pageElement) => {
-        const textLayer = pageElement.querySelector('.react-pdf__Page__textContent');
-        if (textLayer) {
-          restoreTextNodes(textLayer);
+      try {
+        // Get text content with position information
+        const textContent = await pdfPage.getTextContent();
+        if (!textContent || !textContent.items) return;
+
+        // Get the viewport to calculate scale
+        const viewport = pdfPage.getViewport({ scale: 1 });
+        const pageCanvas = pageElement.querySelector('canvas');
+        if (!pageCanvas) return;
+
+        // Calculate the actual scale being used
+        const actualScale = pageCanvas.width / viewport.width;
+
+        // Get or create highlight layer for this page
+        let highlightLayer = pageElement.querySelector('.pdf-highlight-layer') as HTMLElement;
+        if (!highlightLayer) {
+          highlightLayer = document.createElement('div');
+          highlightLayer.className = 'pdf-highlight-layer';
+          highlightLayer.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+          `;
+          // Insert after the canvas but before page number overlay
+          const pageChild = pageElement.querySelector('.react-pdf__Page');
+          if (pageChild && pageChild.nextSibling) {
+            pageChild.parentNode?.insertBefore(highlightLayer, pageChild.nextSibling);
+          } else {
+            pageElement.appendChild(highlightLayer);
+          }
         }
-      });
 
-      // Step 2: Wait for DOM to update after restoration, then highlight
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          pageRefs.current.forEach((pageElement, pageNum) => {
-            const textLayer = pageElement.querySelector('.react-pdf__Page__textContent');
-            if (!textLayer) return;
-            // Step 3: Get fresh text nodes after restoration
-            const textNodes = getAllTextNodes(textLayer);
-            
-            if (textNodes.length === 0) return;
+        // Clear existing highlights for this page
+        highlightLayer.innerHTML = '';
+        const highlights = new Set<HTMLElement>();
 
-            // Initialize highlights set for this page
-            if (!highlightRefs.current.has(pageNum)) {
-              highlightRefs.current.set(pageNum, new Set());
-            }
-            const highlights = highlightRefs.current.get(pageNum)!;
-            highlights.clear(); // Clear old references
+        // Build full text from all items and map each item to its position in the text
+        const itemTexts: Array<{ text: string; width: number; height: number; x: number; y: number; item: unknown }> = [];
+        const fullTextBuilder: string[] = [];
 
-            // Step 4: Build combined text from all nodes to find matches across boundaries
-            // Then process nodes to highlight matches
-            const nodeTexts = textNodes.map(n => n.textContent || '');
-            const combinedText = nodeTexts.join('');
-            const allMatches = Array.from(combinedText.matchAll(queryRegex));
-            
-            if (allMatches.length === 0) return;
+        for (const item of textContent.items) {
+          const textItem = item as { str?: string; width?: number; height?: number; transform?: number[] };
+          if (!textItem.str || textItem.str.trim() === '') continue;
 
-            // Track character offsets for each node
-            let charOffset = 0;
-            const nodeOffsets: Array<{ node: Text; start: number; end: number; text: string }> = [];
-            
-            textNodes.forEach((textNode) => {
-              const text = textNode.textContent || '';
-              const start = charOffset;
-              const end = charOffset + text.length;
-              nodeOffsets.push({ node: textNode, start, end, text });
-              charOffset = end;
-            });
+          const transform = textItem.transform || [1, 0, 0, 1, 0, 0];
+          const [, , , , x, y] = transform;
+          const height = textItem.height || Math.abs(transform[3]) || 12;
+          const width = textItem.width || (textItem.str.length * height * 0.5);
 
-            // Process matches and highlight them
-            // We need to process all matches, but avoid processing the same node twice
-            // So we'll collect all matches first, then process nodes once
-            const nodeMatches = new Map<Text, Array<{ matchStart: number; matchEnd: number; nodeStart: number; nodeEnd: number }>>();
-            
-            allMatches.forEach((match) => {
-              if (match.index === undefined) return;
-              
-              const matchStart = match.index;
-              const matchEnd = match.index + match[0].length;
-              
-              // Find which nodes this match spans
-              // Two intervals [matchStart, matchEnd) and [start, end) overlap if: matchStart < end && matchEnd > start
-              const affectedNodes = nodeOffsets.filter(
-                ({ start, end }) => matchStart < end && matchEnd > start
-              );
-              
-              // Record this match for each affected node
-              affectedNodes.forEach(({ node: textNode, start, end: nodeEnd }) => {
-                if (!nodeMatches.has(textNode)) {
-                  nodeMatches.set(textNode, []);
-                }
-                nodeMatches.get(textNode)!.push({
-                  matchStart,
-                  matchEnd,
-                  nodeStart: start,
-                  nodeEnd,
-                });
-              });
-            });
-            
-            // Now process each node with all its matches
-            nodeMatches.forEach((matches, textNode) => {
-              if (!textNode.parentNode) return; // Node was already replaced
-              
-              const text = textNode.textContent || '';
-              if (!text) return;
-              
-              // Sort matches by position
-              matches.sort((a, b) => a.matchStart - b.matchStart);
-              
-              // Get the node's start position
-              const nodeInfo = nodeOffsets.find(n => n.node === textNode);
-              if (!nodeInfo) return;
-              const { start: nodeStart } = nodeInfo;
-              
-              // Build fragment with all matches highlighted
-              const fragment = document.createDocumentFragment();
-              let lastIndex = 0;
-              
-              matches.forEach(({ matchStart, matchEnd }) => {
-                const nodeMatchStart = Math.max(0, matchStart - nodeStart);
-                const nodeMatchEnd = Math.min(text.length, matchEnd - nodeStart);
-                
-                // Add text before this match
-                if (nodeMatchStart > lastIndex) {
-                  fragment.appendChild(document.createTextNode(text.substring(lastIndex, nodeMatchStart)));
-                }
-                
-                // Highlight the match
-                if (nodeMatchEnd > nodeMatchStart) {
-                  const highlightSpan = document.createElement('span');
-                  highlightSpan.className = 'pdf-search-highlight';
-                  highlightSpan.textContent = text.substring(nodeMatchStart, nodeMatchEnd);
-                  fragment.appendChild(highlightSpan);
-                  highlights.add(highlightSpan);
-                }
-                
-                lastIndex = nodeMatchEnd;
-              });
-              
-              // Add remaining text after last match
-              if (lastIndex < text.length) {
-                fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
-              }
-              
-              // Replace the node
-              if (fragment.childNodes.length > 0 && textNode.parentNode) {
-                textNode.parentNode.replaceChild(fragment, textNode);
-              }
-            });
-
+          itemTexts.push({
+            text: textItem.str,
+            width,
+            height,
+            x,
+            y,
+            item: textItem
           });
-        });
+          fullTextBuilder.push(textItem.str);
+        }
+
+        const fullText = fullTextBuilder.join('');
+        const escapedQuery = normalizedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const queryRegex = new RegExp(`(${escapedQuery})`, 'gi');
+
+        // Find all matches
+        const matches = Array.from(fullText.matchAll(queryRegex)) as RegExpExecArray[];
+        if (matches.length === 0) return;
+
+        // Find which items each match covers and create highlights
+        for (const match of matches) {
+          if (match.index === undefined) continue;
+
+          const matchStart = match.index;
+          const matchEnd = match.index + (match[0]?.length || 0);
+
+          // Find items that are part of this match
+          let currentPos = 0;
+          const matchItems: Array<{ x: number; y: number; width: number; height: number }> = [];
+
+          for (const itemData of itemTexts) {
+            const itemStart = currentPos;
+            const itemEnd = currentPos + itemData.text.length;
+
+            // Check if this item overlaps with the match
+            const overlapStart = Math.max(matchStart, itemStart);
+            const overlapEnd = Math.min(matchEnd, itemEnd);
+
+            if (overlapStart < overlapEnd) {
+              // This item is part of the match
+              const charsIntoItem = Math.max(0, overlapStart - itemStart);
+              const matchLengthInItem = overlapEnd - overlapStart;
+
+              // Calculate width for the portion of text that matches
+              const charWidth = itemData.width / itemData.text.length;
+              const matchWidth = matchLengthInItem * charWidth;
+
+              matchItems.push({
+                x: itemData.x + (charsIntoItem * charWidth),
+                y: itemData.y,
+                width: matchWidth,
+                height: itemData.height
+              });
+            }
+
+            currentPos = itemEnd;
+
+            // Stop if we've passed the match end
+            if (currentPos >= matchEnd) break;
+          }
+
+          // Create highlights for this match
+          for (const item of matchItems) {
+            const highlight = document.createElement('div');
+            highlight.className = 'pdf-search-highlight';
+            // PDF coordinates: (0,0) is bottom-left, need to flip Y for CSS
+            // CSS: (0,0) is top-left
+            const cssTop = viewport.height * actualScale - item.y * actualScale - item.height * actualScale;
+
+            highlight.style.cssText = `
+              position: absolute;
+              left: ${item.x * actualScale}px;
+              top: ${cssTop}px;
+              height: ${item.height * actualScale}px;
+              width: ${item.width * actualScale}px;
+              background-color: rgba(251, 191, 36, 0.5);
+              pointer-events: none;
+              mix-blend-mode: multiply;
+            `;
+
+            highlightLayer.appendChild(highlight);
+            highlights.add(highlight);
+          }
+        }
+
+        // Store highlights for cleanup
+        highlightRefs.current.set(pageNum, highlights);
+      } catch (error) {
+        console.error(`Error highlighting page ${pageNum}:`, error);
+      }
+    };
+
+    // Process all pages
+    const timeoutId = setTimeout(() => {
+      pageRefs.current.forEach((_, pageNum) => {
+        processPage(pageNum);
       });
-    }, 100); // Small delay to ensure text layer is ready
+    }, 100);
 
     return () => clearTimeout(timeoutId);
-  }, [searchQuery, numPages]);
+  }, [searchQuery, numPages, zoom]);
 
   // Scroll-based page detection
   useEffect(() => {
@@ -618,6 +565,14 @@ function PDFViewerImpl({
     } else {
       pageRefs.current.delete(pageNum);
     }
+  }, []);
+
+  // Handle page load success to capture PDF page object for text content access
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handlePageLoadSuccess = useCallback((page: any) => {
+    // Store the PDF page object for later use in highlighting
+    const pageNumber = page.pageNumber;
+    pdfPageRefs.current.set(pageNumber, page);
   }, []);
 
   if (!file) {
@@ -782,6 +737,7 @@ function PDFViewerImpl({
                   width={getPageWidth()}
                   renderTextLayer={true}
                   renderAnnotationLayer={true}
+                  onLoadSuccess={handlePageLoadSuccess}
                   loading={
                     <div className="flex items-center justify-center bg-neutral-800 min-h-[400px] min-w-[300px]">
                       <div className="w-8 h-8 rounded-full border-2 border-neutral-700 border-t-accent-500 animate-spin" />
