@@ -9,7 +9,7 @@
  * - Dark theme styling
  */
 
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react';
 import type React from 'react';
 import { initializePDFJS, getPDFJS } from '@/lib/pdf/init';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -134,6 +134,51 @@ interface PDFViewerImplProps extends PDFViewerProps {
   pdfjs: any;
   searchQuery?: string;
 }
+
+// Memoized page container to prevent re-renders when other pages become current
+// Only re-renders when THIS page's isCurrent status changes
+const PageContainer = memo(function PageContainer({
+  pageNum,
+  isCurrent,
+  setPageRef,
+  children,
+}: {
+  pageNum: number;
+  isCurrent: boolean;
+  setPageRef: (pageNum: number) => (el: HTMLDivElement | null) => void;
+  children: React.ReactNode;
+}) {
+  console.log(`[PageContainer] Render page ${pageNum}, isCurrent: ${isCurrent}`);
+
+  return (
+    <div
+      key={`page_${pageNum}`}
+      ref={setPageRef(pageNum)}
+      className="relative shadow-2xl"
+      data-page-num={pageNum}
+    >
+      {/* Current page indicator ring - only rendered when isCurrent changes */}
+      {isCurrent && (
+        <div className="absolute -inset-[2px] -z-10 rounded-lg ring-2 ring-accent-500/50 pointer-events-none" />
+      )}
+      {children}
+    </div>
+  );
+}, (prevProps, nextProps) => {
+  // Custom comparison: only re-render when isCurrent changes for THIS specific page
+  // When navigating from page 1 to 2:
+  // - Page 1: isCurrent changes true→false → re-render
+  // - Page 2: isCurrent changes false→true → re-render
+  // - Pages 3-6: isCurrent stays false→false → NO RE-RENDER (refs stay stable!)
+  const shouldReRender = prevProps.isCurrent !== nextProps.isCurrent;
+
+  if (shouldReRender) {
+    console.log(`[PageContainer] Page ${nextProps.pageNum} will re-render: isCurrent changed from ${prevProps.isCurrent} to ${nextProps.isCurrent}`);
+  }
+
+  // Return true to SKIP re-render, false to allow re-render
+  return !shouldReRender;
+});
 
 function PDFViewerImpl({
   Document,
@@ -647,16 +692,19 @@ function PDFViewerImpl({
     return zoom;
   }, [zoom, zoomMode]);
 
-  // Memoize page elements to prevent recreation on currentPage changes
+  // Memoize page elements array - but NOT the individual page components
+  // The PageContainer will handle its own re-rendering via React.memo
   const pageElements = useMemo(() => {
     return Array.from({ length: numPages }, (_, index) => {
       const pageNum = index + 1;
+      const isCurrent = currentPage === pageNum;
+
       return (
-        <div
-          key={`page_${pageNum}`}
-          ref={setPageRef(pageNum)}
-          className="relative shadow-2xl"
-          data-page-num={pageNum}
+        <PageContainer
+          key={pageNum}
+          pageNum={pageNum}
+          isCurrent={isCurrent}
+          setPageRef={setPageRef}
         >
           <Page
             pageNumber={pageNum}
@@ -676,10 +724,10 @@ function PDFViewerImpl({
           <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 rounded text-xs text-white/70">
             {pageNum}
           </div>
-        </div>
+        </PageContainer>
       );
     });
-  }, [numPages, getPageScale, getPageWidth, setPageRef, handlePageLoadSuccess, Page]);
+  }, [numPages, currentPage, getPageScale, getPageWidth, setPageRef, handlePageLoadSuccess, Page]);
 
   if (!file) {
     return (
