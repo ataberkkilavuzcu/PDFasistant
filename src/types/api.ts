@@ -10,12 +10,41 @@ export interface ChatRequest {
     role: 'user' | 'assistant';
     content: string;
   }>;
+  /** Enable streaming response */
+  stream?: boolean;
 }
 
 export interface ChatResponse {
   response: string;
   pageReferences?: number[];
 }
+
+// Chat stream event types
+export interface ChatStreamContent {
+  type: 'content';
+  data: string;
+}
+
+export interface ChatStreamPageReference {
+  type: 'pageReference';
+  pageReferences: number[];
+}
+
+export interface ChatStreamError {
+  type: 'error';
+  error: string;
+}
+
+export interface ChatStreamDone {
+  type: 'done';
+  pageReferences?: number[];
+}
+
+export type ChatStreamEvent =
+  | ChatStreamContent
+  | ChatStreamPageReference
+  | ChatStreamError
+  | ChatStreamDone;
 
 // Search API
 export interface SearchRankRequest {

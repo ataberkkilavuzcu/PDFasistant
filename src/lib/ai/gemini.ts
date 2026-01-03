@@ -1,11 +1,12 @@
 /**
  * Gemini AI API client
- * 
+ *
  * Server-side only - handles communication with Google's Gemini API
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { PAGE_AWARE_CHAT_PROMPT, SEARCH_RANK_PROMPT } from './prompts';
+import type { StreamChunk } from '@/lib/api/streaming';
 
 /**
  * Get the Gemini API client instance
@@ -67,6 +68,62 @@ export async function generateChatResponse(
 }
 
 /**
+ * Generate a streaming chat response
+ */
+export async function* generateChatResponseStream(
+  prompt: string,
+  conversationHistory?: Array<{ role: 'user' | 'model'; parts: string }>
+): AsyncGenerator<StreamChunk> {
+  const model = getChatModel();
+  const pageRefRegex = /page\s+(\d+)/gi;
+  const pageReferences: number[] = [];
+
+  try {
+    let result: Awaited<ReturnType<typeof model.generateContentStream>>;
+
+    if (conversationHistory && conversationHistory.length > 0) {
+      const chat = model.startChat({
+        history: conversationHistory.map((msg) => ({
+          role: msg.role,
+          parts: [{ text: msg.parts }],
+        })),
+      });
+      result = await chat.sendMessageStream(prompt);
+    } else {
+      result = await model.generateContentStream(prompt);
+    }
+
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      if (text) {
+        yield { type: 'content', data: text };
+      }
+    }
+
+    // Extract page references from the complete response
+    const finalResponse = await result.response;
+    const fullText = finalResponse.text();
+    let match;
+    while ((match = pageRefRegex.exec(fullText)) !== null) {
+      const pageNum = parseInt(match[1], 10);
+      if (!pageReferences.includes(pageNum)) {
+        pageReferences.push(pageNum);
+      }
+    }
+
+    yield {
+      type: 'done',
+      pageReferences: pageReferences.length > 0 ? pageReferences : undefined,
+    };
+  } catch (error) {
+    yield {
+      type: 'error',
+      error: error instanceof Error ? error.message : 'Generation failed',
+    };
+  }
+}
+
+/**
  * Generate search ranking
  */
 export async function generateSearchRanking(prompt: string): Promise<string> {
@@ -74,4 +131,5 @@ export async function generateSearchRanking(prompt: string): Promise<string> {
   const result = await model.generateContent(prompt);
   return result.response.text();
 }
+
 
