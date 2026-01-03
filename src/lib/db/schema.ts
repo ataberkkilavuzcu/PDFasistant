@@ -11,6 +11,8 @@ import type { MessageRole } from '@/types/chat';
  */
 export interface StoredDocument {
   id: string;
+  /** SHA-256 hash of PDF content for deduplication */
+  contentHash?: string;
   metadata: PDFMetadata;
   pages: PDFPage[];
   /** Original PDF file as Blob (for viewing) */
@@ -54,8 +56,9 @@ export const TABLE_NAMES = {
 /**
  * Database schema version
  * Version 2: Added pdfBlob and blobSize fields to documents
+ * Version 3: Added contentHash for PDF deduplication
  */
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 /**
  * Database name
