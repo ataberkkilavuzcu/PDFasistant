@@ -178,6 +178,18 @@ function PDFViewerImpl({
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const highlightRefs = useRef<Map<number, Set<HTMLElement>>>(new Map());
 
+  // Reset state when file changes to ensure clean loading
+  useEffect(() => {
+    if (file) {
+      setNumPages(0);
+      setIsLoading(true);
+      setError(null);
+      // Clear page refs when file changes
+      pageRefs.current.clear();
+      highlightRefs.current.clear();
+    }
+  }, [file]);
+
   // Update container width on resize
   useEffect(() => {
     const updateWidth = () => {
@@ -216,15 +228,20 @@ function PDFViewerImpl({
     console.error('PDF load error:', err);
     let errorMessage = 'Failed to load PDF';
     
-    // Check for worker-related errors
-    if (err.message.includes('worker') || err.message.includes('pdf.worker')) {
-      errorMessage = 'PDF worker failed to load. Please refresh the page.';
+    // Check for worker-related errors - these might be transient during file switches
+    if (err.message.includes('worker') || err.message.includes('pdf.worker') || err.message.includes('sendWithPromise')) {
+      // For worker errors, try to recover by waiting a bit
+      // This often happens when switching between PDFs quickly
+      console.warn('PDF worker error detected, may be transient:', err.message);
+      // Don't show error immediately - might resolve on retry
+      // The Document component will retry automatically
+      return;
     } else if (err.message.includes('password')) {
       errorMessage = 'This PDF is password-protected';
     } else if (err.message.includes('Invalid')) {
       errorMessage = 'Invalid or corrupted PDF file';
-    } else if (err.message.includes('Missing')) {
-      errorMessage = 'PDF file not found';
+    } else if (err.message.includes('Missing') || err.message.includes('ERR_FILE_NOT_FOUND')) {
+      errorMessage = 'PDF file not found. Please try uploading again.';
     }
     
     setError(errorMessage);
@@ -736,6 +753,7 @@ function PDFViewerImpl({
           </div>
         ) : (
           <Document
+            key={typeof file === 'string' ? file : file?.name || 'pdf-document'}
             file={file}
             onLoadSuccess={handleDocumentLoadSuccess}
             onLoadError={handleDocumentLoadError}

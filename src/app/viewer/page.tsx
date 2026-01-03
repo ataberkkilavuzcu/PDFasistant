@@ -53,15 +53,9 @@ function ViewerContent() {
     }
   }, [documentId, loadDocument, loadHistory]);
 
-  // Reset PDF.js state when component unmounts to ensure clean state on navigation back to main page
-  useEffect(() => {
-    return () => {
-      // Reset PDF.js when leaving viewer to avoid state corruption on main page
-      import('@/lib/pdf/init').then(({ resetPDFJS }) => {
-        resetPDFJS();
-      });
-    };
-  }, []);
+  // Note: We don't reset PDF.js here because it can cause errors if a PDF is still loading
+  // The PDF.js worker is shared and should remain initialized across PDF loads
+  // It will be reset when navigating away from the viewer page (handled in main page)
 
   // Load PDF blob for viewing once document is loaded
   useEffect(() => {
