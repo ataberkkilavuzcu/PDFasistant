@@ -256,6 +256,8 @@ function PDFViewerImpl({
   // Scroll to page when currentPage changes
   // Using a ref to track the latest target page and avoid race conditions
   const targetPageRef = useRef<number | null>(null);
+  // Track if we're programmatically changing pages to prevent scroll handler interference
+  const isProgrammaticScrollRef = useRef(false);
 
   useEffect(() => {
     console.log('[Navigation] useEffect triggered', { currentPage, numPages, pageRefsSize: pageRefs.current.size });
@@ -267,6 +269,7 @@ function PDFViewerImpl({
     }
 
     targetPageRef.current = currentPage;
+    isProgrammaticScrollRef.current = true;
     setScrollingToPage(currentPage);
 
     if (numPages > 0 && currentPage >= 1 && currentPage <= numPages) {
@@ -286,8 +289,16 @@ function PDFViewerImpl({
         if (pageElement) {
           console.log(`[Navigation] ✓ Scrolling to page ${currentPage}`);
           pageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          setScrollingToPage(null);
-          targetPageRef.current = null;
+          // Keep scrollingToPage set during smooth scroll animation to prevent scroll handler interference
+          // Smooth scroll typically takes 300-500ms, so we wait 600ms to be safe
+          setTimeout(() => {
+            setScrollingToPage(null);
+            targetPageRef.current = null;
+            // Clear programmatic scroll flag after scroll completes
+            setTimeout(() => {
+              isProgrammaticScrollRef.current = false;
+            }, 100);
+          }, 600);
         } else if (attempts < maxAttempts) {
           attempts++;
           setTimeout(tryScroll, retryDelay);
@@ -297,6 +308,7 @@ function PDFViewerImpl({
           console.error('[Navigation] Available pages:', Array.from(pageRefs.current.keys()).sort((a, b) => a - b));
           setScrollingToPage(null);
           targetPageRef.current = null;
+          isProgrammaticScrollRef.current = false;
         }
       };
 
@@ -306,6 +318,7 @@ function PDFViewerImpl({
       console.log('[Navigation] Skipping scroll - invalid page or no pages', { currentPage, numPages });
       setScrollingToPage(null);
       targetPageRef.current = null;
+      isProgrammaticScrollRef.current = false;
     }
   }, [currentPage, numPages]);
 
@@ -554,36 +567,52 @@ function PDFViewerImpl({
     const container = containerRef.current;
     if (!container || numPages === 0) return;
 
+    // Debounce scroll handler to avoid too frequent updates
+    let scrollTimeout: NodeJS.Timeout | null = null;
+
     const handleScroll = () => {
       // Don't update page while we're scrolling programmatically (avoid interference)
-      if (scrollingToPage !== null) {
+      if (scrollingToPage !== null || isProgrammaticScrollRef.current) {
         return;
       }
 
-      const containerRect = container.getBoundingClientRect();
-      const containerCenter = containerRect.top + containerRect.height / 3;
-
-      let closestPage = currentPage;
-      let closestDistance = Infinity;
-
-      pageRefs.current.forEach((element, pageNum) => {
-        const rect = element.getBoundingClientRect();
-        const pageCenter = rect.top + rect.height / 2;
-        const distance = Math.abs(pageCenter - containerCenter);
-
-        if (distance < closestDistance) {
-          closestDistance = distance;
-          closestPage = pageNum;
-        }
-      });
-
-      if (closestPage !== currentPage && onPageChange) {
-        onPageChange(closestPage);
+      // Debounce scroll detection to avoid rapid updates during smooth scrolling
+      if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
       }
+
+      scrollTimeout = setTimeout(() => {
+        const containerRect = container.getBoundingClientRect();
+        const containerCenter = containerRect.top + containerRect.height / 3;
+
+        let closestPage = currentPage;
+        let closestDistance = Infinity;
+
+        pageRefs.current.forEach((element, pageNum) => {
+          const rect = element.getBoundingClientRect();
+          const pageCenter = rect.top + rect.height / 2;
+          const distance = Math.abs(pageCenter - containerCenter);
+
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            closestPage = pageNum;
+          }
+        });
+
+        // Only update if page actually changed and we're not programmatically scrolling
+        if (closestPage !== currentPage && scrollingToPage === null && onPageChange) {
+          onPageChange(closestPage);
+        }
+      }, 100); // 100ms debounce
     };
 
     container.addEventListener('scroll', handleScroll, { passive: true });
-    return () => container.removeEventListener('scroll', handleScroll);
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
+      }
+    };
   }, [numPages, currentPage, onPageChange, scrollingToPage]);
 
   // Keyboard navigation
