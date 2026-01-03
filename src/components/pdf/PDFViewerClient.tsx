@@ -9,7 +9,7 @@
  * - Dark theme styling
  */
 
-import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import type React from 'react';
 import { initializePDFJS, getPDFJS } from '@/lib/pdf/init';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -629,6 +629,58 @@ function PDFViewerImpl({
     pdfPageRefs.current.set(pageNumber, page);
   }, []);
 
+  // Calculate width based on zoom mode
+  const getPageWidth = useCallback(() => {
+    if (zoomMode === 'fit-width' && containerWidth > 0) {
+      return containerWidth - 48; // Account for padding
+    }
+    return undefined;
+  }, [zoomMode, containerWidth]);
+
+  const getPageScale = useCallback(() => {
+    if (zoomMode === 'fit-page') {
+      return undefined; // Let react-pdf auto-scale to fit
+    }
+    if (zoomMode === 'fit-width') {
+      return undefined; // Width takes precedence
+    }
+    return zoom;
+  }, [zoom, zoomMode]);
+
+  // Memoize page elements to prevent recreation on currentPage changes
+  const pageElements = useMemo(() => {
+    return Array.from({ length: numPages }, (_, index) => {
+      const pageNum = index + 1;
+      return (
+        <div
+          key={`page_${pageNum}`}
+          ref={setPageRef(pageNum)}
+          className="relative shadow-2xl"
+          data-page-num={pageNum}
+        >
+          <Page
+            pageNumber={pageNum}
+            scale={getPageScale()}
+            width={getPageWidth()}
+            renderTextLayer={true}
+            renderAnnotationLayer={true}
+            onLoadSuccess={handlePageLoadSuccess}
+            loading={
+              <div className="flex items-center justify-center bg-neutral-800 min-h-[400px] min-w-[300px]">
+                <div className="w-8 h-8 rounded-full border-2 border-neutral-700 border-t-accent-500 animate-spin" />
+              </div>
+            }
+            className="bg-white"
+          />
+          {/* Page number overlay */}
+          <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 rounded text-xs text-white/70">
+            {pageNum}
+          </div>
+        </div>
+      );
+    });
+  }, [numPages, getPageScale, getPageWidth, setPageRef, handlePageLoadSuccess, Page]);
+
   if (!file) {
     return (
       <div className="flex items-center justify-center h-full bg-neutral-950 text-neutral-400">
@@ -641,53 +693,6 @@ function PDFViewerImpl({
       </div>
     );
   }
-
-  // Calculate width based on zoom mode
-  const getPageWidth = () => {
-    if (zoomMode === 'fit-width' && containerWidth > 0) {
-      return containerWidth - 48; // Account for padding
-    }
-    return undefined;
-  };
-
-  const getPageScale = () => {
-    if (zoomMode === 'fit-page') {
-      return undefined; // Let react-pdf auto-scale to fit
-    }
-    if (zoomMode === 'fit-width') {
-      return undefined; // Width takes precedence
-    }
-    return zoom;
-  };
-
-  // Memoized page container to prevent re-renders when other pages become current
-  const PageContainer = memo(function PageContainer({
-    pageNum,
-    isCurrent,
-    setPageRef,
-    children,
-  }: {
-    pageNum: number;
-    isCurrent: boolean;
-    setPageRef: (pageNum: number) => (el: HTMLDivElement | null) => void;
-    children: React.ReactNode;
-  }) {
-    return (
-      <div
-        ref={setPageRef(pageNum)}
-        className="relative shadow-2xl"
-      >
-        {/* Current page indicator ring */}
-        {isCurrent && (
-          <div className="absolute -inset-[2px] -z-10 rounded-lg ring-2 ring-accent-500/50 pointer-events-none" />
-        )}
-        {children}
-      </div>
-    );
-  }, (prevProps, nextProps) => {
-    // Only re-render when this specific page's current status changes
-    return prevProps.isCurrent === nextProps.isCurrent;
-  });
 
   return (
     <div className="flex flex-col h-full bg-neutral-950">
@@ -806,38 +811,7 @@ function PDFViewerImpl({
             }
             className="flex flex-col items-center py-6 gap-6"
           >
-            {Array.from({ length: numPages }, (_, index) => {
-              const pageNum = index + 1;
-              const isCurrent = currentPage === pageNum;
-
-              return (
-                <PageContainer
-                  key={`page_${pageNum}`}
-                  pageNum={pageNum}
-                  isCurrent={isCurrent}
-                  setPageRef={setPageRef}
-                >
-                  <Page
-                    pageNumber={pageNum}
-                    scale={getPageScale()}
-                    width={getPageWidth()}
-                    renderTextLayer={true}
-                    renderAnnotationLayer={true}
-                    onLoadSuccess={handlePageLoadSuccess}
-                    loading={
-                      <div className="flex items-center justify-center bg-neutral-800 min-h-[400px] min-w-[300px]">
-                        <div className="w-8 h-8 rounded-full border-2 border-neutral-700 border-t-accent-500 animate-spin" />
-                      </div>
-                    }
-                    className="bg-white"
-                  />
-                  {/* Page number overlay */}
-                  <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 rounded text-xs text-white/70">
-                    {pageNum}
-                  </div>
-                </PageContainer>
-              );
-            })}
+            {pageElements}
           </Document>
         )}
       </div>
