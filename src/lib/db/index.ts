@@ -10,6 +10,7 @@ import {
   DB_NAME,
   DB_VERSION,
 } from './schema';
+import { calculateFileHash } from '@/lib/utils/hash';
 
 export class PDFasistantDB extends Dexie {
   documents!: Table<StoredDocument, string>;
@@ -27,10 +28,26 @@ export class PDFasistantDB extends Dexie {
     });
 
     // Version 2: Added pdfBlob and blobSize (no index changes needed)
-    this.version(DB_VERSION).stores({
+    this.version(2).stores({
       documents: 'id, metadata.title, metadata.uploadDate',
       messages: 'id, documentId, timestamp',
       preferences: 'id',
+    });
+
+    // Version 3: Added contentHash for PDF deduplication
+    this.version(DB_VERSION).stores({
+      documents: 'id, contentHash, metadata.title, metadata.uploadDate',
+      messages: 'id, documentId, timestamp',
+      preferences: 'id',
+    }).upgrade(async (trans) => {
+      // Migrate existing documents - calculate hash for each
+      const docs = await trans.table<StoredDocument>('documents').toArray();
+      for (const doc of docs) {
+        if (doc.pdfBlob && !doc.contentHash) {
+          const contentHash = await calculateFileHash(doc.pdfBlob);
+          await trans.table<StoredDocument>('documents').update(doc.id, { contentHash });
+        }
+      }
     });
   }
 }

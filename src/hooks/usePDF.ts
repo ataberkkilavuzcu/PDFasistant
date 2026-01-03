@@ -14,10 +14,12 @@ import { useState, useCallback } from 'react';
 import type { PDFDocument, PDFPage, PDFMetadata } from '@/types/pdf';
 import { db } from '@/lib/db';
 import { generateDocumentId, createPDFDocument } from '@/lib/pdf/extractor';
+import { calculateFileHash } from '@/lib/utils/hash';
 
 /** Document summary for list display (without pages/blob for performance) */
 export interface DocumentSummary {
   id: string;
+  contentHash?: string;
   metadata: PDFMetadata;
   blobSize?: number;
 }
@@ -80,16 +82,40 @@ export function usePDF(): UsePDFReturn {
    * Save a new document to IndexedDB
    * Optionally stores the original PDF blob for viewing
    * Returns the generated document ID
+   * Implements deduplication: if a PDF with the same content already exists,
+   * returns the existing document ID instead of creating a duplicate.
    */
   const saveDocument = useCallback(
     async (metadata: PDFMetadata, pages: PDFPage[], pdfBlob?: Blob): Promise<string> => {
       try {
+        // Calculate content hash if blob is provided (for deduplication)
+        let contentHash: string | undefined;
+        if (pdfBlob) {
+          contentHash = await calculateFileHash(pdfBlob);
+
+          // Check for existing document with same content
+          const existing = await db.documents.where('contentHash').equals(contentHash).first();
+
+          if (existing) {
+            // Deduplication: return existing document ID
+            console.log(`Duplicate detected, reusing existing document: ${existing.id}`);
+            setState({
+              document: existing,
+              isLoading: false,
+              error: null,
+            });
+            return existing.id;
+          }
+        }
+
+        // Generate new ID and create document
         const id = generateDocumentId();
         const doc = createPDFDocument(id, metadata, pages);
 
-        // Add blob data if provided
+        // Add blob data and content hash
         const docWithBlob = {
           ...doc,
+          contentHash,
           pdfBlob,
           blobSize: pdfBlob?.size,
         };
@@ -110,7 +136,7 @@ export function usePDF(): UsePDFReturn {
         return id;
       } catch (err) {
         console.error('Failed to save document:', err);
-        
+
         // Check for quota exceeded errors
         let errorMessage = 'Failed to save document';
         if (err instanceof Error) {
@@ -120,7 +146,7 @@ export function usePDF(): UsePDFReturn {
             errorMessage = err.message;
           }
         }
-        
+
         setState((prev) => ({ ...prev, error: errorMessage }));
         throw new Error(errorMessage);
       }
@@ -174,6 +200,7 @@ export function usePDF(): UsePDFReturn {
       // Return only metadata (exclude pages and blob for performance)
       return docs.map(doc => ({
         id: doc.id,
+        contentHash: doc.contentHash,
         metadata: doc.metadata,
         blobSize: doc.blobSize,
       }));

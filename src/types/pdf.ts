@@ -16,6 +16,8 @@ export interface PDFMetadata {
 
 export interface PDFDocument {
   id: string;
+  /** SHA-256 hash of PDF content for deduplication */
+  contentHash?: string;
   metadata: PDFMetadata;
   pages: PDFPage[];
   /** Original PDF file as Blob (for viewing) */

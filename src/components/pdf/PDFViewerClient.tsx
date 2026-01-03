@@ -173,7 +173,9 @@ function PDFViewerImpl({
   const [zoom, setZoom] = useState(initialZoom);
   const [zoomMode, setZoomMode] = useState<ZoomMode>('custom');
   const [containerWidth, setContainerWidth] = useState(0);
-  
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [scrollingToPage, setScrollingToPage] = useState<number | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const highlightRefs = useRef<Map<number, Set<HTMLElement>>>(new Map());
@@ -208,12 +210,46 @@ function PDFViewerImpl({
   }, []);
 
   // Scroll to page when currentPage changes
+  // Using a ref to track the latest target page and avoid race conditions
+  const targetPageRef = useRef<number | null>(null);
+
   useEffect(() => {
+    // Don't scroll if same page is already being scrolled to (prevent redundant scrolls)
+    if (targetPageRef.current === currentPage) {
+      return;
+    }
+
+    targetPageRef.current = currentPage;
+    setScrollingToPage(currentPage);
+
     if (numPages > 0 && currentPage >= 1 && currentPage <= numPages) {
-      const pageElement = pageRefs.current.get(currentPage);
-      if (pageElement) {
-        pageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      // Retry logic to handle race condition where page refs aren't ready yet
+      let attempts = 0;
+      const maxAttempts = 10; // 10 attempts * 50ms = 500ms max wait
+      const retryDelay = 50; // 50ms between attempts
+
+      const tryScroll = () => {
+        const pageElement = pageRefs.current.get(currentPage);
+        if (pageElement) {
+          pageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          setScrollingToPage(null);
+          targetPageRef.current = null;
+        } else if (attempts < maxAttempts) {
+          attempts++;
+          setTimeout(tryScroll, retryDelay);
+        } else {
+          // Max attempts reached, give up and clean up state
+          console.warn(`Could not scroll to page ${currentPage}: page element not found after ${maxAttempts} attempts`);
+          setScrollingToPage(null);
+          targetPageRef.current = null;
+        }
+      };
+
+      // Start the first attempt immediately
+      tryScroll();
+    } else {
+      setScrollingToPage(null);
+      targetPageRef.current = null;
     }
   }, [currentPage, numPages]);
 

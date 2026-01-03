@@ -1,20 +1,26 @@
 /**
  * Chat API Route - Page-aware conversational queries
+ * Supports both streaming and non-streaming responses
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { generateChatResponse } from '@/lib/ai/gemini';
+import { NextRequest } from 'next/server';
+import { generateChatResponse, generateChatResponseStream } from '@/lib/ai/gemini';
 import { formatUserMessage } from '@/lib/ai/prompts';
-import type { ChatRequest, ChatResponse, ApiError } from '@/types/api';
+import type { ChatRequest, ApiError } from '@/types/api';
+import { streamResponse, jsonResponse } from '@/lib/api/streaming';
+
+export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
+  const requestId = crypto.randomUUID?.() ?? `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
   try {
     const body: ChatRequest = await request.json();
-    const { message, pageContext, conversationHistory } = body;
+    const { message, pageContext, conversationHistory, stream = false } = body;
 
     // Validate request
     if (!message || typeof message !== 'string') {
-      return NextResponse.json<ApiError>(
+      return jsonResponse<ApiError>(
         {
           error: 'Bad Request',
           message: 'Message is required',
@@ -25,7 +31,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!pageContext || typeof pageContext !== 'string') {
-      return NextResponse.json<ApiError>(
+      return jsonResponse<ApiError>(
         {
           error: 'Bad Request',
           message: 'Page context is required',
@@ -48,7 +54,15 @@ export async function POST(request: NextRequest) {
       parts: msg.content,
     }));
 
-    // Generate response
+    // Generate response (streaming or non-streaming)
+    if (stream) {
+      // Stream the response
+      const stream = await generateChatResponseStream(prompt, geminiHistory);
+
+      return streamResponse(stream, requestId);
+    }
+
+    // Non-streaming response
     const response = await generateChatResponse(prompt, geminiHistory);
 
     // Extract page references from response
@@ -62,14 +76,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json<ChatResponse>({
+    return jsonResponse({
       response,
       pageReferences: pageReferences.length > 0 ? pageReferences : undefined,
     });
   } catch (error) {
-    console.error('Chat API error:', error);
+    console.error(`Chat API error [${requestId}]:`, error);
 
-    return NextResponse.json<ApiError>(
+    return jsonResponse<ApiError>(
       {
         error: 'Internal Server Error',
         message: error instanceof Error ? error.message : 'Unknown error',
