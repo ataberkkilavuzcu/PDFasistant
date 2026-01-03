@@ -777,34 +777,39 @@ function PDFViewerImpl({
             }
             className="flex flex-col items-center py-6 gap-6"
           >
-            {Array.from({ length: numPages }, (_, index) => (
-              <div
-                key={`page_${index + 1}`}
-                ref={setPageRef(index + 1)}
-                className={`relative shadow-2xl ${
-                  currentPage === index + 1 ? 'ring-2 ring-accent-500/50' : ''
-                }`}
-              >
-                <Page
-                  pageNumber={index + 1}
-                  scale={getPageScale()}
-                  width={getPageWidth()}
-                  renderTextLayer={true}
-                  renderAnnotationLayer={true}
-                  onLoadSuccess={handlePageLoadSuccess}
-                  loading={
-                    <div className="flex items-center justify-center bg-neutral-800 min-h-[400px] min-w-[300px]">
-                      <div className="w-8 h-8 rounded-full border-2 border-neutral-700 border-t-accent-500 animate-spin" />
-                    </div>
-                  }
-                  className="bg-white"
-                />
-                {/* Page number overlay */}
-                <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 rounded text-xs text-white/70">
-                  {index + 1}
+            {Array.from({ length: numPages }, (_, index) => {
+              const pageNum = index + 1;
+              return (
+                <div
+                  key={`page_${pageNum}`}
+                  ref={setPageRef(pageNum)}
+                  className="relative shadow-2xl"
+                >
+                  {/* Current page indicator ring - separate element to avoid re-rendering page container */}
+                  {currentPage === pageNum && (
+                    <div className="absolute -inset-[2px] -z-10 rounded-lg ring-2 ring-accent-500/50 pointer-events-none" />
+                  )}
+                  <Page
+                    pageNumber={pageNum}
+                    scale={getPageScale()}
+                    width={getPageWidth()}
+                    renderTextLayer={true}
+                    renderAnnotationLayer={true}
+                    onLoadSuccess={handlePageLoadSuccess}
+                    loading={
+                      <div className="flex items-center justify-center bg-neutral-800 min-h-[400px] min-w-[300px]">
+                        <div className="w-8 h-8 rounded-full border-2 border-neutral-700 border-t-accent-500 animate-spin" />
+                      </div>
+                    }
+                    className="bg-white"
+                  />
+                  {/* Page number overlay */}
+                  <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 rounded text-xs text-white/70">
+                    {pageNum}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </Document>
         )}
       </div>
