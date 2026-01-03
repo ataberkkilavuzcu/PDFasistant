@@ -9,7 +9,7 @@
  * - Dark theme styling
  */
 
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, memo } from 'react';
 import type React from 'react';
 import { initializePDFJS, getPDFJS } from '@/lib/pdf/init';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -660,6 +660,35 @@ function PDFViewerImpl({
     return zoom;
   };
 
+  // Memoized page container to prevent re-renders when other pages become current
+  const PageContainer = memo(function PageContainer({
+    pageNum,
+    isCurrent,
+    setPageRef,
+    children,
+  }: {
+    pageNum: number;
+    isCurrent: boolean;
+    setPageRef: (pageNum: number) => (el: HTMLDivElement | null) => void;
+    children: React.ReactNode;
+  }) {
+    return (
+      <div
+        ref={setPageRef(pageNum)}
+        className="relative shadow-2xl"
+      >
+        {/* Current page indicator ring */}
+        {isCurrent && (
+          <div className="absolute -inset-[2px] -z-10 rounded-lg ring-2 ring-accent-500/50 pointer-events-none" />
+        )}
+        {children}
+      </div>
+    );
+  }, (prevProps, nextProps) => {
+    // Only re-render when this specific page's current status changes
+    return prevProps.isCurrent === nextProps.isCurrent;
+  });
+
   return (
     <div className="flex flex-col h-full bg-neutral-950">
       {/* Zoom Controls */}
@@ -779,16 +808,15 @@ function PDFViewerImpl({
           >
             {Array.from({ length: numPages }, (_, index) => {
               const pageNum = index + 1;
+              const isCurrent = currentPage === pageNum;
+
               return (
-                <div
+                <PageContainer
                   key={`page_${pageNum}`}
-                  ref={setPageRef(pageNum)}
-                  className="relative shadow-2xl"
+                  pageNum={pageNum}
+                  isCurrent={isCurrent}
+                  setPageRef={setPageRef}
                 >
-                  {/* Current page indicator ring - separate element to avoid re-rendering page container */}
-                  {currentPage === pageNum && (
-                    <div className="absolute -inset-[2px] -z-10 rounded-lg ring-2 ring-accent-500/50 pointer-events-none" />
-                  )}
                   <Page
                     pageNumber={pageNum}
                     scale={getPageScale()}
@@ -807,7 +835,7 @@ function PDFViewerImpl({
                   <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 rounded text-xs text-white/70">
                     {pageNum}
                   </div>
-                </div>
+                </PageContainer>
               );
             })}
           </Document>
