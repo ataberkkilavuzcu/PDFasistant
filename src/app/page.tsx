@@ -94,18 +94,22 @@ export default function Home() {
           },
         });
 
-        // CRITICAL: Always reset PDF.js state before processing a new file
-        // This ensures clean state after returning from viewer or subsequent uploads
-        const { resetPDFJS } = await import('@/lib/pdf/init');
-        resetPDFJS();
-        // Allow time for cleanup to complete
-        await new Promise(resolve => setTimeout(resolve, 150));
+        // Ensure PDF.js is initialized before processing the file
+        // Note: We don't reset here to avoid race conditions with the viewer page
+        // PDF.js state is already reset on page mount/unmount
+        let pdfjs;
+        try {
+          await initializePDFJS();
+          pdfjs = await getPDFJS();
+        } catch {
+          // If initialization fails, try once with reset
+          const { resetPDFJS } = await import('@/lib/pdf/init');
+          resetPDFJS();
+          await new Promise(resolve => setTimeout(resolve, 100));
+          await initializePDFJS();
+          pdfjs = await getPDFJS();
+        }
 
-        // Initialize PDF.js with fresh state
-        await initializePDFJS();
-        const pdfjs = await getPDFJS();
-        setIsPDFReady(true);
-        
         if (!pdfjs) {
           throw new Error('Failed to initialize PDF.js');
         }

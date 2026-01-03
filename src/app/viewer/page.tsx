@@ -53,6 +53,16 @@ function ViewerContent() {
     }
   }, [documentId, loadDocument, loadHistory]);
 
+  // Reset PDF.js state when component unmounts to ensure clean state on navigation back to main page
+  useEffect(() => {
+    return () => {
+      // Reset PDF.js when leaving viewer to avoid state corruption on main page
+      import('@/lib/pdf/init').then(({ resetPDFJS }) => {
+        resetPDFJS();
+      });
+    };
+  }, []);
+
   // Load PDF blob for viewing once document is loaded
   useEffect(() => {
     const loadPDFBlob = async () => {
