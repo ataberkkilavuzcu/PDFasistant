@@ -173,7 +173,6 @@ function PDFViewerImpl({
   const [zoom, setZoom] = useState(initialZoom);
   const [zoomMode, setZoomMode] = useState<ZoomMode>('custom');
   const [containerWidth, setContainerWidth] = useState(0);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [scrollingToPage, setScrollingToPage] = useState<number | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -499,6 +498,11 @@ function PDFViewerImpl({
     if (!container || numPages === 0) return;
 
     const handleScroll = () => {
+      // Don't update page while we're scrolling programmatically (avoid interference)
+      if (scrollingToPage !== null) {
+        return;
+      }
+
       const containerRect = container.getBoundingClientRect();
       const containerCenter = containerRect.top + containerRect.height / 3;
 
@@ -523,7 +527,7 @@ function PDFViewerImpl({
 
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
-  }, [numPages, currentPage, onPageChange]);
+  }, [numPages, currentPage, onPageChange, scrollingToPage]);
 
   // Keyboard navigation
   useEffect(() => {
