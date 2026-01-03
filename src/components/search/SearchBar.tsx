@@ -86,6 +86,7 @@ export function SearchBar({
 
   const handleResultClick = useCallback(
     (pageNumber: number) => {
+      console.log('[SearchBar] Result clicked', { pageNumber });
       onResultClick(pageNumber);
       setIsOpen(false);
     },

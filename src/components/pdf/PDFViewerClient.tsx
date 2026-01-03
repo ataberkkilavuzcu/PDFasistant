@@ -213,8 +213,11 @@ function PDFViewerImpl({
   const targetPageRef = useRef<number | null>(null);
 
   useEffect(() => {
+    console.log('[Navigation] useEffect triggered', { currentPage, numPages, pageRefsSize: pageRefs.current.size });
+
     // Don't scroll if same page is already being scrolled to (prevent redundant scrolls)
     if (targetPageRef.current === currentPage) {
+      console.log('[Navigation] Skipping - same page');
       return;
     }
 
@@ -224,12 +227,19 @@ function PDFViewerImpl({
     if (numPages > 0 && currentPage >= 1 && currentPage <= numPages) {
       // Retry logic to handle race condition where page refs aren't ready yet
       let attempts = 0;
-      const maxAttempts = 10; // 10 attempts * 50ms = 500ms max wait
+      const maxAttempts = 20; // 20 attempts * 50ms = 1000ms max wait
       const retryDelay = 50; // 50ms between attempts
 
       const tryScroll = () => {
         const pageElement = pageRefs.current.get(currentPage);
+        console.log(`[Navigation] Scroll attempt ${attempts + 1}/${maxAttempts} for page ${currentPage}`, {
+          found: !!pageElement,
+          availablePages: Array.from(pageRefs.current.keys()).sort((a, b) => a - b),
+          totalPages: numPages
+        });
+
         if (pageElement) {
+          console.log(`[Navigation] ✓ Scrolling to page ${currentPage}`);
           pageElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
           setScrollingToPage(null);
           targetPageRef.current = null;
@@ -238,7 +248,8 @@ function PDFViewerImpl({
           setTimeout(tryScroll, retryDelay);
         } else {
           // Max attempts reached, give up and clean up state
-          console.warn(`Could not scroll to page ${currentPage}: page element not found after ${maxAttempts} attempts`);
+          console.error(`[Navigation] ✗ Could not scroll to page ${currentPage}: page element not found after ${maxAttempts} attempts`);
+          console.error('[Navigation] Available pages:', Array.from(pageRefs.current.keys()).sort((a, b) => a - b));
           setScrollingToPage(null);
           targetPageRef.current = null;
         }
@@ -247,6 +258,7 @@ function PDFViewerImpl({
       // Start the first attempt immediately
       tryScroll();
     } else {
+      console.log('[Navigation] Skipping scroll - invalid page or no pages', { currentPage, numPages });
       setScrollingToPage(null);
       targetPageRef.current = null;
     }
@@ -602,8 +614,10 @@ function PDFViewerImpl({
   const setPageRef = useCallback((pageNum: number) => (el: HTMLDivElement | null) => {
     if (el) {
       pageRefs.current.set(pageNum, el);
+      console.log(`[PageRef] Registered page ${pageNum}, total refs: ${pageRefs.current.size}`);
     } else {
       pageRefs.current.delete(pageNum);
+      console.log(`[PageRef] Unregistered page ${pageNum}, total refs: ${pageRefs.current.size}`);
     }
   }, []);
 

@@ -140,6 +140,7 @@ function ViewerContent() {
 
   // Handle page change from viewer or navigator
   const handlePageChange = useCallback((page: number) => {
+    console.log('[ViewerPage] handlePageChange called', { page });
     setCurrentPage(page);
   }, [setCurrentPage]);
 
@@ -171,6 +172,7 @@ function ViewerContent() {
   // Handle clicking a page reference (from search or chat)
   const handlePageClick = useCallback(
     (page: number) => {
+      console.log('[ViewerPage] handlePageClick called', { page });
       setCurrentPage(page);
     },
     [setCurrentPage]

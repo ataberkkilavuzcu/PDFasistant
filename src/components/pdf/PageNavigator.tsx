@@ -40,12 +40,14 @@ export function PageNavigator({
 
   const handlePrevious = useCallback(() => {
     if (currentPage > 1) {
+      console.log('[PageNavigator] Previous button clicked', { from: currentPage, to: currentPage - 1 });
       onPageChange(currentPage - 1);
     }
   }, [currentPage, onPageChange]);
 
   const handleNext = useCallback(() => {
     if (currentPage < totalPages) {
+      console.log('[PageNavigator] Next button clicked', { from: currentPage, to: currentPage + 1 });
       onPageChange(currentPage + 1);
     }
   }, [currentPage, totalPages, onPageChange]);
