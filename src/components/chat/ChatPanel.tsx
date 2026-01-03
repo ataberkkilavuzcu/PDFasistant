@@ -26,7 +26,7 @@ export function ChatPanel({
   return (
     <div className="flex flex-col h-full bg-transparent">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-white/10 bg-white/5 backdrop-blur-sm">
+      <div className="px-6 py-4 border-b border-white/10 bg-gradient-to-r from-white/5 to-white/[0.02] backdrop-blur-sm">
         <h2 className="text-lg font-semibold text-white flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-primary-500 animate-pulse-glow"></span>
           AI Assistant
@@ -51,7 +51,7 @@ export function ChatPanel({
       )}
 
       {/* Input */}
-      <div className="border-t border-white/10 p-4 bg-white/5 backdrop-blur-sm">
+      <div className="border-t border-white/10 p-4 bg-gradient-to-t from-white/5 to-white/[0.02] backdrop-blur-sm">
         <ChatInput onSend={onSendMessage} isDisabled={isLoading} />
       </div>
     </div>

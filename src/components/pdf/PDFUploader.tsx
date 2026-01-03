@@ -212,11 +212,11 @@ export function PDFUploader({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         className={`
-          relative border-2 border-dashed rounded-xl p-12 md:p-16 text-center cursor-pointer
+          relative border-2 border-dashed rounded-2xl p-12 md:p-16 text-center cursor-pointer
           transition-all duration-300 ease-out group
           ${isDragging
-            ? 'border-accent-500 bg-accent-500/5 scale-[1.01]'
-            : 'border-neutral-700 hover:border-accent-500/50 hover:bg-neutral-800/30'
+            ? 'border-primary-500 bg-primary-500/5 scale-[1.01] premium-shadow-lg'
+            : 'border-neutral-700 hover:border-primary-500/50 hover:bg-neutral-800/30 hover:premium-shadow'
           }
           ${isLoading || isValidating ? 'opacity-50 pointer-events-none' : ''}
         `}
@@ -231,7 +231,7 @@ export function PDFUploader({
 
         {isLoading || isValidating ? (
           <div className="flex flex-col items-center gap-4">
-            <div className="w-16 h-16 border-4 border-neutral-700 border-t-accent-500 rounded-full animate-spin"></div>
+            <div className="w-16 h-16 border-4 border-neutral-700 border-t-primary-500 rounded-full animate-spin"></div>
             <p className="text-neutral-400 animate-pulse">
               {isValidating ? 'Validating file...' : 'Processing PDF...'}
             </p>
@@ -241,12 +241,12 @@ export function PDFUploader({
             <div className="flex flex-col items-center gap-6 relative z-10">
               <div className={`
                 w-20 h-20 rounded-2xl flex items-center justify-center
-                bg-gradient-to-br from-accent-500/20 to-accent-600/10
+                bg-gradient-to-br from-primary-500/20 to-accent-500/10
                 border border-neutral-700 shadow-lg
-                group-hover:scale-110 group-hover:border-accent-500/30 transition-all duration-300
+                group-hover:scale-110 group-hover:border-primary-500/50 transition-all duration-300
               `}>
                 <svg
-                  className="w-10 h-10 text-accent-500 transition-colors"
+                  className="w-10 h-10 text-primary-400 transition-colors"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -276,7 +276,7 @@ export function PDFUploader({
             </div>
 
             {/* Subtle background effect on hover */}
-            <div className="absolute inset-0 bg-gradient-to-tr from-accent-500/0 via-accent-500/[0.02] to-accent-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl pointer-events-none"></div>
+            <div className="absolute inset-0 bg-gradient-to-tr from-primary-500/0 via-primary-500/[0.02] to-accent-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl pointer-events-none"></div>
           </>
         )}
       </div>

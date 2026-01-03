@@ -240,58 +240,58 @@ export default function Home() {
 
   return (
     <main className="min-h-screen relative overflow-hidden bg-background text-foreground selection:bg-primary-500/30">
-      {/* Animated Background Blobs */}
+      {/* Animated Background Blobs - Modern Green Theme */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10 pointer-events-none">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary-500/20 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-blob"></div>
-        <div className="absolute top-0 right-1/4 w-96 h-96 bg-purple-500/20 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
-        <div className="absolute -bottom-32 left-1/3 w-96 h-96 bg-pink-500/20 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
+        <div className="absolute top-0 right-1/4 w-96 h-96 bg-accent-500/20 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
+        <div className="absolute -bottom-32 left-1/3 w-96 h-96 bg-emerald-500/20 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
       </div>
 
       <div className="container mx-auto px-4 py-16 relative z-10">
         {/* Header */}
         <div className="text-center mb-20 animate-float">
-          <div className="inline-block mb-4 px-4 py-1.5 rounded-full border border-primary-500/30 bg-primary-500/10 text-primary-400 text-sm font-medium backdrop-blur-sm">
-            🚀 Next-Gen PDF Experience
+          <div className="inline-block mb-4 px-4 py-1.5 rounded-full border border-primary-500/30 bg-gradient-to-r from-primary-500/10 to-accent-500/10 text-primary-400 text-sm font-medium backdrop-blur-sm premium-shadow">
+            Next-Gen PDF Experience
           </div>
           <h1 className="text-6xl md:text-7xl font-bold mb-6 tracking-tight">
-            PDF<span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 to-purple-500 text-glow">assistant</span>
+            PDF<span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 via-accent-400 to-emerald-400 text-glow">assistant</span>
           </h1>
           <p className="text-xl text-gray-400 max-w-2xl mx-auto leading-relaxed">
-            Your intelligent reading companion. Upload a document and experience 
+            Your intelligent reading companion. Upload a document and experience
             <span className="text-primary-400"> context-aware</span> answers powered by AI.
           </p>
         </div>
 
         {/* Upload section */}
         <div className="flex flex-col items-center max-w-4xl mx-auto mb-32 perspective-1000">
-          <div className="w-full transform transition-all duration-500 hover:scale-[1.01] hover:shadow-2xl shadow-primary-500/10">
-            <div className="glass-panel rounded-2xl p-1">
-              <div className="bg-black/40 rounded-xl p-8 md:p-12 border border-white/5">
-                <PDFUploader 
-                  onFileSelect={handleFileSelect} 
+          <div className="w-full transform transition-all duration-500 hover:scale-[1.01] premium-shadow-lg">
+            <div className="glass-panel rounded-3xl p-1 gradient-border">
+              <div className="bg-black/60 rounded-2xl p-8 md:p-12 border border-white/5">
+                <PDFUploader
+                  onFileSelect={handleFileSelect}
                   isLoading={isProcessing || isInitializing}
                 />
-                
+
                 {isInitializing && !isProcessing && (
                   <div className="mt-4 text-center">
                     <p className="text-sm text-gray-400 animate-pulse">Initializing PDF processor...</p>
                   </div>
                 )}
-                
+
                 {isProcessing && (
                   <div className="mt-8 text-center space-y-4">
                     {/* Progress bar */}
-                    <div className="relative w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                    <div className="relative w-full h-2 bg-gray-800 rounded-full overflow-hidden premium-shadow">
                       {progress ? (
-                        <div 
-                          className="absolute top-0 left-0 h-full bg-gradient-to-r from-primary-500 to-purple-500 transition-all duration-300 ease-out"
+                        <div
+                          className="absolute top-0 left-0 h-full bg-gradient-to-r from-primary-500 via-accent-500 to-emerald-500 transition-all duration-300 ease-out"
                           style={{ width: `${progress.percentage}%` }}
                         />
                       ) : (
-                        <div className="absolute top-0 left-0 h-full w-1/3 bg-gradient-to-r from-transparent via-primary-500 to-transparent animate-[shimmer_1.5s_infinite]" />
+                        <div className="absolute top-0 left-0 h-full w-1/3 bg-gradient-to-r from-transparent via-primary-500 to-transparent animate-shimmer" />
                       )}
                     </div>
-                    
+
                     {/* Progress details */}
                     <div className="space-y-1">
                       <p className="text-primary-400 text-sm font-medium">
@@ -337,7 +337,7 @@ export default function Home() {
 
         {/* Features */}
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-          <FeatureCard 
+          <FeatureCard
             icon={
               <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -348,9 +348,9 @@ export default function Home() {
             delay="0"
           />
 
-          <FeatureCard 
+          <FeatureCard
             icon={
-              <svg className="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-accent-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             }
@@ -359,9 +359,9 @@ export default function Home() {
             delay="100"
           />
 
-          <FeatureCard 
+          <FeatureCard
             icon={
-              <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             }
@@ -377,12 +377,12 @@ export default function Home() {
 
 function FeatureCard({ icon, title, description, delay }: { icon: React.ReactNode, title: string, description: string, delay: string }) {
   return (
-    <div 
+    <div
       className="group perspective-1000"
       style={{ animationDelay: `${delay}ms` }}
     >
-      <div className="glass-panel rounded-2xl p-8 h-full transform transition-all duration-300 hover:-translate-y-2 hover:bg-white/10 border-white/5 hover:border-primary-500/30">
-        <div className="w-12 h-12 bg-white/5 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 ring-1 ring-white/10 group-hover:ring-primary-500/50">
+      <div className="glass-panel rounded-3xl p-8 h-full transform transition-all duration-300 hover:-translate-y-2 hover:bg-white/10 border-white/5 hover:border-primary-500/30 premium-shadow hover:premium-shadow-lg">
+        <div className="w-12 h-12 bg-gradient-to-br from-primary-500/20 to-accent-500/10 rounded-xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300 ring-1 ring-primary-500/20 group-hover:ring-primary-500/50">
           {icon}
         </div>
         <h3 className="text-xl font-bold text-white mb-3 group-hover:text-primary-400 transition-colors">
