@@ -646,16 +646,45 @@ function PDFViewerImpl({
               const charsIntoItem = Math.max(0, overlapStart - itemStart);
               const matchLengthInItem = overlapEnd - overlapStart;
 
-              // Calculate width for the portion of text that matches
-              const charWidth = itemData.width / itemData.text.length;
-              const matchWidth = matchLengthInItem * charWidth;
+              // FIX: Use canvas text measurement for accurate width calculation
+              // This handles proportional fonts correctly (not just monospaced)
+              const canvas = document.createElement('canvas');
+              const context = canvas.getContext('2d');
+              if (context) {
+                // Use the font size from the text item
+                const fontSize = itemData.height;
+                context.font = `${fontSize}px sans-serif`;
 
-              matchItems.push({
-                x: itemData.x + (charsIntoItem * charWidth),
-                y: itemData.y,
-                width: matchWidth,
-                height: itemData.height
-              });
+                // Get the substring that matches
+                const matchSubstring = itemData.text.substring(charsIntoItem, charsIntoItem + matchLengthInItem);
+
+                // Measure the width of the matched substring
+                const matchWidth = context.measureText(matchSubstring).width;
+
+                // Calculate the offset from the start of the item
+                let offsetX = 0;
+                if (charsIntoItem > 0) {
+                  const prefix = itemData.text.substring(0, charsIntoItem);
+                  offsetX = context.measureText(prefix).width;
+                }
+
+                matchItems.push({
+                  x: itemData.x + offsetX,
+                  y: itemData.y,
+                  width: matchWidth,
+                  height: itemData.height
+                });
+              } else {
+                // Fallback to old calculation if canvas not available
+                const charWidth = itemData.width / itemData.text.length;
+                const matchWidth = matchLengthInItem * charWidth;
+                matchItems.push({
+                  x: itemData.x + (charsIntoItem * charWidth),
+                  y: itemData.y,
+                  width: matchWidth,
+                  height: itemData.height
+                });
+              }
             }
 
             currentPos = itemEnd;
