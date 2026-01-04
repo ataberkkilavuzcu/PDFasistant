@@ -30,15 +30,39 @@ export interface PDFValidationResult {
  * Validate PDF file by checking magic bytes (file signature)
  * This catches files with wrong extension or corrupted headers
  */
-async function validatePDFMagicBytes(file: File): Promise<boolean> {
+async function validatePDFMagicBytes(file: File): Promise<{ valid: boolean; reason?: string }> {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = () => {
-      const arr = new Uint8Array(reader.result as ArrayBuffer);
-      const isPDF = PDF_MAGIC_BYTES.every((byte, i) => arr[i] === byte);
-      resolve(isPDF);
+      try {
+        const arr = new Uint8Array(reader.result as ArrayBuffer);
+
+        // Check if we have enough bytes
+        if (arr.length < 4) {
+          resolve({ valid: false, reason: 'File too small to be a valid PDF' });
+          return;
+        }
+
+        // Check for PDF magic bytes
+        const hasMagicBytes = PDF_MAGIC_BYTES.every((byte, i) => arr[i] === byte);
+
+        if (!hasMagicBytes) {
+          // Log what we actually found for debugging
+          const header = Array.from(arr.slice(0, 4))
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join(' ');
+          console.warn(`Invalid PDF header. Expected: 25 50 44 46, Found: ${header}`);
+          resolve({ valid: false, reason: `File does not have PDF header (found: ${header})` });
+          return;
+        }
+
+        resolve({ valid: true });
+      } catch (error) {
+        console.error('Error validating PDF magic bytes:', error);
+        resolve({ valid: false, reason: 'Error reading file header' });
+      }
     };
-    reader.onerror = () => resolve(false);
+    reader.onerror = () => resolve({ valid: false, reason: 'Error reading file' });
     // Only read first 4 bytes for magic number check
     reader.readAsArrayBuffer(file.slice(0, 4));
   });
@@ -119,9 +143,12 @@ export function PDFUploader({
     }
 
     // Validate PDF magic bytes (catches corrupted or fake PDFs)
-    const hasValidMagicBytes = await validatePDFMagicBytes(file);
-    if (!hasValidMagicBytes) {
-      return { valid: false, error: 'Invalid PDF file: corrupted or not a real PDF' };
+    const magicBytesResult = await validatePDFMagicBytes(file);
+    if (!magicBytesResult.valid) {
+      return {
+        valid: false,
+        error: magicBytesResult.reason || 'Invalid PDF file: corrupted or not a real PDF'
+      };
     }
 
     return { valid: true };

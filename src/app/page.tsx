@@ -114,24 +114,63 @@ export default function Home() {
         // Read file as ArrayBuffer
         const arrayBuffer = await file.arrayBuffer();
 
+        // Verify the array buffer is not empty
+        if (arrayBuffer.byteLength === 0) {
+          throw new Error('PDF file is empty or could not be read');
+        }
+
+        // Add a small delay to ensure PDF.js worker is fully ready
+        await new Promise(resolve => setTimeout(resolve, 50));
+
         // Load PDF document with error handling
         let pdfDoc;
-        try {
-          pdfDoc = await pdfjs.getDocument({ 
-            data: arrayBuffer,
-            // Add error handling options
-            verbosity: 0, // Suppress console warnings
-          }).promise;
-        } catch (loadError) {
-          // Provide more specific error messages
-          if (loadError instanceof Error) {
-            if (loadError.message.includes('password')) {
-              throw new Error('This PDF is password-protected. Please remove the password and try again.');
-            } else if (loadError.message.includes('Invalid PDF')) {
-              throw new Error('This file is not a valid PDF or is corrupted.');
+        let loadAttempt = 0;
+        const maxLoadAttempts = 2;
+
+        while (loadAttempt < maxLoadAttempts) {
+          try {
+            pdfDoc = await pdfjs.getDocument({
+              data: arrayBuffer,
+              // Add error handling options
+              verbosity: 0, // Suppress console warnings
+              // Use standard font to avoid issues with embedded fonts
+              useSystemFonts: true,
+              useWorkerFetch: true,
+            }).promise;
+
+            // If we got here, loading succeeded
+            break;
+          } catch (loadError: unknown) {
+            loadAttempt++;
+
+            // If this is the last attempt, throw the error
+            if (loadAttempt >= maxLoadAttempts) {
+              // Provide more specific error messages
+              if (loadError instanceof Error) {
+                const errorMsg = loadError.message.toLowerCase();
+
+                if (errorMsg.includes('password') || errorMsg.includes('encrypted')) {
+                  throw new Error('This PDF is password-protected. Please remove the password and try again.');
+                } else if (errorMsg.includes('invalid pdf') || errorMsg.includes('not a pdf') || errorMsg.includes('pdf header')) {
+                  throw new Error('This file is not a valid PDF or is corrupted. Please try a different file.');
+                } else if (errorMsg.includes('worker') || errorMsg.includes('canvas')) {
+                  throw new Error('PDF.js worker error: ' + loadError.message + '. Please refresh the page and try again.');
+                } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
+                  throw new Error('Network error loading PDF. Please check your connection and try again.');
+                }
+              }
+              // If we can't identify the specific error, throw a generic one
+              throw new Error(
+                loadError instanceof Error
+                  ? `Failed to load PDF: ${loadError.message}`
+                  : 'Failed to load PDF. The file may be corrupted.'
+              );
             }
+
+            // If not the last attempt, wait a bit and retry
+            console.warn(`PDF load attempt ${loadAttempt} failed, retrying...`, loadError);
+            await new Promise(resolve => setTimeout(resolve, 100));
           }
-          throw loadError;
         }
 
         // Validate PDF is readable (catches password-protected or corrupted PDFs)

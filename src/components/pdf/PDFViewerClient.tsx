@@ -15,6 +15,25 @@ import { initializePDFJS, getPDFJS } from '@/lib/pdf/init';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
+/**
+ * Platform detection utility for macOS/Safari compatibility
+ */
+function isMacOS(): boolean {
+  if (typeof window === 'undefined') return false;
+  return /^Mac/.test(navigator.platform);
+}
+
+function isSafari(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent;
+  return /^((?!chrome|android).)*safari/i.test(ua);
+}
+
+function shouldUseCustomDropdown(): boolean {
+  // Use custom dropdown on macOS or Safari to avoid native select rendering issues
+  return isMacOS() || isSafari();
+}
+
 /** Zoom level presets */
 const ZOOM_LEVELS = [0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3];
 const DEFAULT_ZOOM = 1;
@@ -212,6 +231,115 @@ function PDFViewerImpl({
     };
   }, [pdfjs]);
 
+  /**
+   * Custom Zoom Dropdown Component
+   * Used on macOS/Safari to avoid native select rendering issues
+   */
+  const CustomZoomDropdown = memo(function CustomZoomDropdown({
+    zoom,
+    onZoomChange,
+  }: {
+    zoom: number;
+    onZoomChange: (level: number) => void;
+  }) {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+          setIsOpen(false);
+        }
+      };
+
+      if (isOpen) {
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }
+    }, [isOpen]);
+
+    return (
+      <div ref={dropdownRef} className="relative" style={{ pointerEvents: 'auto' }}>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[Zoom] Dropdown toggle clicked, current state:', isOpen);
+            setIsOpen((prev) => {
+              console.log('[Zoom] Toggling dropdown from', prev, 'to', !prev);
+              return !prev;
+            });
+          }}
+          className="bg-neutral-800 text-neutral-300 text-sm font-medium px-2 py-1.5 rounded focus:outline-none focus:ring-1 focus:ring-accent-500/50 cursor-pointer border border-neutral-700/50 hover:border-neutral-600 transition-colors flex items-center gap-1 min-w-[70px]"
+          style={{
+            minWidth: '70px',
+            paddingRight: '1.5rem',
+            position: 'relative',
+            WebkitAppearance: 'none',
+            appearance: 'none',
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+            userSelect: 'none',
+          }}
+          title="Select zoom level"
+        >
+          <span>{Math.round(zoom * 100)}%</span>
+          <svg
+            className={`w-3 h-3 transition-transform absolute right-2 ${isOpen ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            style={{ color: 'rgba(161, 161, 169, 0.7)' }}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {isOpen && (
+          <div 
+            className="absolute top-full left-0 mt-1 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl z-[100] min-w-[70px]"
+            style={{ pointerEvents: 'auto' }}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            <div className="py-1">
+              {ZOOM_LEVELS.map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('[Zoom] Dropdown option clicked:', level, 'current zoom:', zoom);
+                    onZoomChange(level);
+                    setIsOpen(false);
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${
+                    level === zoom
+                      ? 'bg-accent-500/20 text-accent-400 font-medium'
+                      : 'text-neutral-300 hover:bg-neutral-700'
+                  }`}
+                  style={{
+                    WebkitAppearance: 'none',
+                    appearance: 'none',
+                    cursor: 'pointer',
+                    pointerEvents: 'auto',
+                    userSelect: 'none',
+                  }}
+                >
+                  {Math.round(level * 100)}%
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  });
+
   const [numPages, setNumPages] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -359,26 +487,32 @@ function PDFViewerImpl({
 
   // Zoom handlers (defined before useEffect that uses them)
   const handleZoomIn = useCallback(() => {
+    console.log('[Zoom] handleZoomIn called');
     setZoomMode('custom');
     setZoom((prev) => {
       const newZoom = Math.min(prev + ZOOM_STEP, MAX_ZOOM);
+      console.log('[Zoom] Zoom in: prev=', prev, 'new=', newZoom);
       onZoomChange?.(newZoom);
       return newZoom;
     });
   }, [onZoomChange]);
 
   const handleZoomOut = useCallback(() => {
+    console.log('[Zoom] handleZoomOut called');
     setZoomMode('custom');
     setZoom((prev) => {
       const newZoom = Math.max(prev - ZOOM_STEP, MIN_ZOOM);
+      console.log('[Zoom] Zoom out: prev=', prev, 'new=', newZoom);
       onZoomChange?.(newZoom);
       return newZoom;
     });
   }, [onZoomChange]);
 
   const handleZoomReset = useCallback(() => {
+    console.log('[Zoom] handleZoomReset called');
     setZoomMode('custom');
     setZoom(DEFAULT_ZOOM);
+    console.log('[Zoom] Zoom reset to:', DEFAULT_ZOOM);
     onZoomChange?.(DEFAULT_ZOOM);
   }, [onZoomChange]);
 
@@ -408,20 +542,34 @@ function PDFViewerImpl({
       if (!pdfPage || !pageElement) return;
 
       try {
+        // Wait for canvas to be rendered and get valid dimensions
+        const pageCanvas = pageElement.querySelector('canvas') as HTMLCanvasElement;
+        if (!pageCanvas || pageCanvas.width === 0 || pageCanvas.height === 0) {
+          // Canvas not ready, retry after delay
+          setTimeout(() => processPage(pageNum), 100);
+          return;
+        }
+
         // Get text content with position information
         const textContent = await pdfPage.getTextContent();
         if (!textContent || !textContent.items) return;
 
         // Get the viewport to calculate scale
         const viewport = pdfPage.getViewport({ scale: 1 });
-        const pageCanvas = pageElement.querySelector('canvas');
-        if (!pageCanvas) return;
 
-        // Calculate the actual scale being used
-        const actualScale = pageCanvas.width / viewport.width;
+        // FIX: Use CSS display size instead of intrinsic canvas size for accurate scaling
+        const canvasRect = pageCanvas.getBoundingClientRect();
+        const actualScale = canvasRect.width / viewport.width;
 
-        // Get or create highlight layer for this page
-        let highlightLayer = pageElement.querySelector('.pdf-highlight-layer') as HTMLElement;
+        // Get the react-pdf Page wrapper
+        const reactPdfPage = pageElement.querySelector('.react-pdf__Page') as HTMLElement;
+        if (!reactPdfPage) {
+          console.warn(`[Highlight] .react-pdf__Page wrapper not found for page ${pageNum}`);
+          return;
+        }
+
+        // FIX: Position highlight layer inside .react-pdf__Page (not as sibling)
+        let highlightLayer = reactPdfPage.querySelector('.pdf-highlight-layer') as HTMLElement;
         if (!highlightLayer) {
           highlightLayer = document.createElement('div');
           highlightLayer.className = 'pdf-highlight-layer';
@@ -434,13 +582,8 @@ function PDFViewerImpl({
             pointer-events: none;
             z-index: 10;
           `;
-          // Insert after the canvas but before page number overlay
-          const pageChild = pageElement.querySelector('.react-pdf__Page');
-          if (pageChild && pageChild.nextSibling) {
-            pageChild.parentNode?.insertBefore(highlightLayer, pageChild.nextSibling);
-          } else {
-            pageElement.appendChild(highlightLayer);
-          }
+          // Append as child of .react-pdf__Page to align with canvas
+          reactPdfPage.appendChild(highlightLayer);
         }
 
         // Clear existing highlights for this page
@@ -671,17 +814,23 @@ function PDFViewerImpl({
   }, [currentPage, numPages, onPageChange, handleZoomIn, handleZoomOut, handleZoomReset]);
 
   const handleZoomSelect = useCallback((level: number) => {
+    console.log('[Zoom] handleZoomSelect called with level:', level);
     setZoomMode('custom');
     setZoom(level);
     onZoomChange?.(level);
+    console.log('[Zoom] Zoom state updated to:', level);
   }, [onZoomChange]);
 
   const handleFitWidth = useCallback(() => {
+    console.log('[Zoom] handleFitWidth called');
     setZoomMode('fit-width');
+    console.log('[Zoom] Zoom mode set to fit-width');
   }, []);
 
   const handleFitPage = useCallback(() => {
+    console.log('[Zoom] handleFitPage called');
     setZoomMode('fit-page');
+    console.log('[Zoom] Zoom mode set to fit-page');
   }, []);
 
   // Register page ref
@@ -723,22 +872,26 @@ function PDFViewerImpl({
 
   // Memoize page elements array - but NOT the individual page components
   // The PageContainer will handle its own re-rendering via React.memo
+  // Include zoom and zoomMode in dependencies to ensure re-render when zoom changes
   const pageElements = useMemo(() => {
+    console.log('[PageElements] Recomputing page elements, zoom:', zoom, 'zoomMode:', zoomMode);
     return Array.from({ length: numPages }, (_, index) => {
       const pageNum = index + 1;
       const isCurrent = currentPage === pageNum;
+      const pageScale = getPageScale();
+      const pageWidth = getPageWidth();
 
       return (
         <PageContainer
-          key={pageNum}
+          key={`page-${pageNum}-zoom-${zoom}-mode-${zoomMode}`}
           pageNum={pageNum}
           isCurrent={isCurrent}
           setPageRef={setPageRef}
         >
           <Page
             pageNumber={pageNum}
-            scale={getPageScale()}
-            width={getPageWidth()}
+            scale={pageScale}
+            width={pageWidth}
             renderTextLayer={true}
             renderAnnotationLayer={true}
             onLoadSuccess={handlePageLoadSuccess}
@@ -756,7 +909,7 @@ function PDFViewerImpl({
         </PageContainer>
       );
     });
-  }, [numPages, currentPage, getPageScale, getPageWidth, setPageRef, handlePageLoadSuccess, Page]);
+  }, [numPages, currentPage, zoom, zoomMode, getPageScale, getPageWidth, setPageRef, handlePageLoadSuccess, Page]);
 
   if (!file) {
     return (
@@ -774,36 +927,90 @@ function PDFViewerImpl({
   return (
     <div className="flex flex-col h-full bg-neutral-950">
       {/* Zoom Controls */}
-      <div className="flex items-center justify-center gap-2 py-2 px-4 bg-neutral-900/80 backdrop-blur-sm border-b border-neutral-800">
-        <div className="flex items-center gap-1 bg-neutral-800/50 rounded-lg p-1 border border-neutral-700/50">
+      <div
+        className="flex items-center justify-center gap-2 py-2 px-4 border-b border-neutral-800 relative z-50"
+        style={{
+          backgroundColor: 'rgba(23, 23, 26, 0.8)',
+          // Fallback for browsers without backdrop-blur support
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          pointerEvents: 'auto',
+          userSelect: 'none',
+        }}
+      >
+        <div className="flex items-center gap-1 bg-neutral-800/50 rounded-lg p-1 border border-neutral-700/50" style={{ pointerEvents: 'auto' }}>
           <button
-            onClick={handleZoomOut}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('[Zoom] Zoom out clicked, current zoom:', zoom);
+              handleZoomOut();
+            }}
             disabled={zoom <= MIN_ZOOM}
             className="p-1.5 rounded hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             title="Zoom out (Ctrl+-)"
+            style={{
+              WebkitAppearance: 'none',
+              appearance: 'none',
+              cursor: zoom <= MIN_ZOOM ? 'not-allowed' : 'pointer',
+              pointerEvents: 'auto',
+              userSelect: 'none',
+            }}
           >
             <svg className="w-4 h-4 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
             </svg>
           </button>
 
-          <select
-            value={zoom}
-            onChange={(e) => handleZoomSelect(parseFloat(e.target.value))}
-            className="bg-transparent text-neutral-300 text-sm font-medium px-2 py-1 focus:outline-none cursor-pointer"
-          >
-            {ZOOM_LEVELS.map((level) => (
-              <option key={level} value={level} className="bg-neutral-800 text-neutral-100">
-                {Math.round(level * 100)}%
-              </option>
-            ))}
-          </select>
+          {/* Conditional rendering: custom dropdown on macOS/Safari, native select on Windows */}
+          {shouldUseCustomDropdown() ? (
+            <CustomZoomDropdown zoom={zoom} onZoomChange={handleZoomSelect} />
+          ) : (
+            <select
+              value={zoom}
+              onChange={(e) => handleZoomSelect(parseFloat(e.target.value))}
+              className="bg-neutral-800 text-neutral-300 text-sm font-medium px-2 py-1.5 rounded focus:outline-none focus:ring-1 focus:ring-accent-500/50 cursor-pointer border border-neutral-700/50 hover:border-neutral-600 transition-colors appearance-none pr-8 relative z-10 min-w-[70px]"
+              style={{
+                WebkitAppearance: 'none',
+                MozAppearance: 'none',
+                appearance: 'none',
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a1a1aa9'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+                backgroundSize: '1rem',
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 0.5rem center',
+                pointerEvents: 'auto',
+                cursor: 'pointer',
+                minWidth: '70px',
+                paddingRight: '2rem',
+              }}
+            >
+              {ZOOM_LEVELS.map((level) => (
+                <option key={level} value={level} className="bg-neutral-900 text-neutral-100">
+                  {Math.round(level * 100)}%
+                </option>
+              ))}
+            </select>
+          )}
 
           <button
-            onClick={handleZoomIn}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('[Zoom] Zoom in clicked, current zoom:', zoom);
+              handleZoomIn();
+            }}
             disabled={zoom >= MAX_ZOOM}
             className="p-1.5 rounded hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             title="Zoom in (Ctrl++)"
+            style={{
+              WebkitAppearance: 'none',
+              appearance: 'none',
+              cursor: zoom >= MAX_ZOOM ? 'not-allowed' : 'pointer',
+              pointerEvents: 'auto',
+              userSelect: 'none',
+            }}
           >
             <svg className="w-4 h-4 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -815,31 +1022,70 @@ function PDFViewerImpl({
 
         <div className="flex items-center gap-1">
           <button
-            onClick={handleFitWidth}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('[Zoom] Fit width clicked');
+              handleFitWidth();
+            }}
             className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
               zoomMode === 'fit-width'
                 ? 'bg-accent-500/20 text-accent-400 border border-accent-500/30'
                 : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'
             }`}
             title="Fit to width"
+            style={{
+              WebkitAppearance: 'none',
+              appearance: 'none',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+              userSelect: 'none',
+            }}
           >
             Fit Width
           </button>
           <button
-            onClick={handleFitPage}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('[Zoom] Fit page clicked');
+              handleFitPage();
+            }}
             className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
               zoomMode === 'fit-page'
                 ? 'bg-accent-500/20 text-accent-400 border border-accent-500/30'
                 : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200'
             }`}
             title="Fit page"
+            style={{
+              WebkitAppearance: 'none',
+              appearance: 'none',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+              userSelect: 'none',
+            }}
           >
             Fit Page
           </button>
           <button
-            onClick={handleZoomReset}
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('[Zoom] Reset clicked');
+              handleZoomReset();
+            }}
             className="px-3 py-1.5 text-xs font-medium text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 rounded transition-colors"
             title="Reset zoom (Ctrl+0)"
+            style={{
+              WebkitAppearance: 'none',
+              appearance: 'none',
+              cursor: 'pointer',
+              pointerEvents: 'auto',
+              userSelect: 'none',
+            }}
           >
             Reset
           </button>
