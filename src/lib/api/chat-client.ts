@@ -97,7 +97,8 @@ export async function sendChatMessage(
  */
 export async function* sendChatMessageStream(
   request: ChatRequest,
-  retryConfig: RetryConfig = {}
+  retryConfig: RetryConfig = {},
+  signal?: AbortSignal
 ): AsyncGenerator<ChatStreamEvent> {
   const config = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
   let lastError: Error | null = null;
@@ -108,6 +109,7 @@ export async function* sendChatMessageStream(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...request, stream: true }),
+        signal,
       });
 
       if (!response.ok) {
@@ -158,6 +160,11 @@ export async function* sendChatMessageStream(
       return;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Handle abort error - don't yield error, just stop
+      if (lastError.name === 'AbortError') {
+        return;
+      }
 
       // Don't retry if it's the last attempt or error is not retryable
       if (attempt >= config.maxRetries || !isRetryableError(lastError)) {

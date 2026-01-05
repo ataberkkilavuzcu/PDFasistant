@@ -12,8 +12,6 @@ import { db } from '@/lib/db';
 import { sendChatMessageStream } from '@/lib/api/chat-client';
 
 interface UseChatOptions {
-  /** Enable streaming responses (default: true) */
-  enableStream?: boolean;
   /** Maximum number of retry attempts (default: 3) */
   maxRetries?: number;
 }
@@ -42,7 +40,7 @@ function generateMessageId(): string {
  * Hook for managing chat state and interactions
  */
 export function useChat(options: UseChatOptions = {}): UseChatReturn {
-  const { enableStream = true, maxRetries = 3 } = options;
+  const { maxRetries = 3 } = options;
 
   const [state, setState] = useState<ChatState>({
     messages: [],
@@ -135,7 +133,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           message,
           pageContext,
           conversationHistory,
-          stream: enableStream,
+          stream: true,
         };
 
         // Track if we encountered an error during streaming
@@ -143,44 +141,45 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         let accumulatedContent = '';
         let pageReferences: number[] | undefined;
 
-        if (enableStream) {
-          // Streaming response
-          const stream = sendChatMessageStream(request, {
-            maxRetries,
-            onRetry: (attempt, error) => {
-              setState((prev) => ({
-                ...prev,
-                error: `Retrying (${attempt}/${maxRetries}): ${error.message}`,
-              }));
-            },
-          });
+        // Create abort controller for this request
+        abortControllerRef.current = new AbortController();
 
-          for await (const event of stream) {
-            switch (event.type) {
-              case 'content':
-                accumulatedContent += event.data;
-                setState((prev) => {
-                  const updatedMessages = prev.messages.map((msg) =>
-                    msg.id === assistantMessageId
-                      ? { ...msg, content: accumulatedContent }
-                      : msg
-                  );
-                  return { ...prev, messages: updatedMessages };
-                });
-                break;
+        // Streaming response
+        const stream = sendChatMessageStream(request, {
+          maxRetries,
+          onRetry: (attempt, error) => {
+            setState((prev) => ({
+              ...prev,
+              error: `Retrying (${attempt}/${maxRetries}): ${error.message}`,
+            }));
+          },
+        }, abortControllerRef.current.signal);
 
-              case 'done':
-                pageReferences = event.pageReferences;
-                break;
+        for await (const event of stream) {
+          switch (event.type) {
+            case 'content':
+              accumulatedContent += event.data;
+              setState((prev) => {
+                const updatedMessages = prev.messages.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: accumulatedContent }
+                    : msg
+                );
+                // Clear error on successful content (handles retry recovery)
+                return { ...prev, messages: updatedMessages, error: null };
+              });
+              break;
 
-              case 'error':
-                streamError = event.error;
-                break;
-            }
+            case 'done':
+              pageReferences = event.pageReferences;
+              // Clear error on successful completion
+              setState((prev) => ({ ...prev, error: null }));
+              break;
+
+            case 'error':
+              streamError = event.error;
+              break;
           }
-        } else {
-          // Non-streaming fallback
-          throw new Error('Non-streaming mode not implemented');
         }
 
         // Update final assistant message
@@ -218,10 +217,12 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
           error: err instanceof Error ? err.message : 'Failed to send message',
         }));
       } finally {
+        // Clear abort controller
+        abortControllerRef.current = null;
         isStreamingRef.current = false;
       }
     },
-    [state.messages, enableStream, maxRetries]
+    [state.messages, maxRetries]
   );
 
   const cancelMessage = useCallback(() => {

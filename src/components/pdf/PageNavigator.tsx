@@ -96,7 +96,7 @@ export function PageNavigator({
       <button
         onClick={handleFirst}
         disabled={currentPage <= 1}
-        className="p-2 text-white bg-white/10 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 hover:premium-shadow"
+        className="p-2 text-white bg-slate-800/95 rounded-lg hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 hover:premium-shadow"
         aria-label="First page"
         title="First page (Home)"
       >
@@ -109,7 +109,7 @@ export function PageNavigator({
       <button
         onClick={handlePrevious}
         disabled={currentPage <= 1}
-        className="p-2 text-white bg-white/10 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 hover:premium-shadow"
+        className="p-2 text-white bg-slate-800/95 rounded-lg hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 hover:premium-shadow"
         aria-label="Previous page"
         title="Previous page (←)"
       >
@@ -119,24 +119,24 @@ export function PageNavigator({
       </button>
 
       {/* Page input */}
-      <form onSubmit={handleInputSubmit} className="flex items-center gap-2 bg-gradient-to-r from-black/40 to-black/30 rounded-lg px-3 py-1.5 border border-white/10 premium-shadow">
+      <form onSubmit={handleInputSubmit} className="flex items-center gap-2 bg-gradient-to-r from-slate-800 to-slate-700/95 rounded-lg px-3 py-1.5 border border-slate-600/30 premium-shadow">
         <input
           type="text"
           value={inputValue}
           onChange={handleInputChange}
           onFocus={handleInputFocus}
           onBlur={handleInputBlur}
-          className="w-12 px-1 py-0.5 text-center text-sm font-bold bg-transparent text-white border-b border-white/20 focus:border-primary-500 focus:outline-none transition-colors"
+          className="w-12 px-1 py-0.5 text-center text-sm font-bold bg-transparent text-white border-b border-slate-500/50 focus:border-primary-500 focus:outline-none transition-colors"
           aria-label="Page number"
         />
-        <span className="text-sm text-gray-500 font-medium">/ {totalPages}</span>
+        <span className="text-sm text-slate-300 font-medium">/ {totalPages}</span>
       </form>
 
       {/* Next page */}
       <button
         onClick={handleNext}
         disabled={currentPage >= totalPages}
-        className="p-2 text-white bg-white/10 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 hover:premium-shadow"
+        className="p-2 text-white bg-slate-800/95 rounded-lg hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 hover:premium-shadow"
         aria-label="Next page"
         title="Next page (→)"
       >
@@ -149,7 +149,7 @@ export function PageNavigator({
       <button
         onClick={handleLast}
         disabled={currentPage >= totalPages}
-        className="p-2 text-white bg-white/10 rounded-lg hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 hover:premium-shadow"
+        className="p-2 text-white bg-slate-800/95 rounded-lg hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95 hover:premium-shadow"
         aria-label="Last page"
         title="Last page (End)"
       >
@@ -160,9 +160,9 @@ export function PageNavigator({
 
       {/* Keyboard hints */}
       {showKeyboardHints && (
-        <div className="ml-2 text-xs text-gray-500 hidden md:block">
-          <span className="px-1.5 py-0.5 bg-white/5 rounded text-gray-400 mr-1 border border-white/10">←</span>
-          <span className="px-1.5 py-0.5 bg-white/5 rounded text-gray-400 border border-white/10">→</span>
+        <div className="ml-2 text-xs text-slate-400 hidden md:block">
+          <span className="px-1.5 py-0.5 bg-slate-700/80 rounded text-slate-200 mr-1 border border-slate-600/40">←</span>
+          <span className="px-1.5 py-0.5 bg-slate-700/80 rounded text-slate-200 border border-slate-600/40">→</span>
           <span className="ml-1">to navigate</span>
         </div>
       )}
