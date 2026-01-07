@@ -33,11 +33,13 @@ interface UsePDFState {
 interface UsePDFReturn extends UsePDFState {
   loadDocument: (id: string) => Promise<void>;
   saveDocument: (metadata: PDFMetadata, pages: PDFPage[], pdfBlob?: Blob) => Promise<string>;
+  updateDocument: (id: string, updates: Partial<Pick<PDFDocument, 'metadata'>>) => Promise<void>;
   deleteDocument: (id: string) => Promise<void>;
   clearDocument: () => void;
   getAllDocuments: () => Promise<PDFDocument[]>;
   getDocumentSummaries: () => Promise<DocumentSummary[]>;
   getPDFBlob: (id: string) => Promise<Blob | null>;
+  getDocumentById: (id: string) => Promise<PDFDocument | null>;
 }
 
 /**
@@ -155,6 +157,41 @@ export function usePDF(): UsePDFReturn {
   );
 
   /**
+   * Update document metadata (e.g., rename title)
+   */
+  const updateDocument = useCallback(async (id: string, updates: Partial<Pick<PDFDocument, 'metadata'>>) => {
+    try {
+      const doc = await db.documents.get(id);
+      if (!doc) {
+        throw new Error('Document not found');
+      }
+
+      const updatedDoc = {
+        ...doc,
+        metadata: {
+          ...doc.metadata,
+          ...updates.metadata,
+        },
+      };
+
+      await db.documents.put(updatedDoc);
+
+      // Update state if this is the current document
+      setState((prev) => ({
+        ...prev,
+        document: prev.document?.id === id ? updatedDoc : prev.document,
+      }));
+
+      console.log(`Document updated: ${id}`);
+    } catch (err) {
+      console.error('Failed to update document:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to update document';
+      setState((prev) => ({ ...prev, error: errorMessage }));
+      throw new Error(errorMessage);
+    }
+  }, []);
+
+  /**
    * Delete a document and its associated messages from IndexedDB
    */
   const deleteDocument = useCallback(async (id: string) => {
@@ -224,6 +261,19 @@ export function usePDF(): UsePDFReturn {
   }, []);
 
   /**
+   * Get a document by ID without setting it as current
+   */
+  const getDocumentById = useCallback(async (id: string): Promise<PDFDocument | null> => {
+    try {
+      const doc = await db.documents.get(id);
+      return doc || null;
+    } catch (err) {
+      console.error('Failed to get document by ID:', err);
+      return null;
+    }
+  }, []);
+
+  /**
    * Clear current document from state (does not delete from storage)
    */
   const clearDocument = useCallback(() => {
@@ -238,11 +288,13 @@ export function usePDF(): UsePDFReturn {
     ...state,
     loadDocument,
     saveDocument,
+    updateDocument,
     deleteDocument,
     clearDocument,
     getAllDocuments,
     getDocumentSummaries,
     getPDFBlob,
+    getDocumentById,
   };
 }
 

@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 
 /**
  * PDF Viewer page with chat interface
+ * Neural Intelligence Interface Design
  * Features:
  * - PDF viewing with zoom controls
  * - Page navigation with keyboard support
@@ -16,10 +17,13 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, useCallback, useMemo, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { PDFViewer, PageNavigator } from '@/components/pdf';
-import { ChatPanel } from '@/components/chat';
+import { ChatPanel, ChatHistorySidebar } from '@/components/chat';
 import { SearchBar } from '@/components/search';
+import { PDFErrorBoundary, ChatErrorBoundary } from '@/components/error-boundaries';
 import { usePDF, useChat, usePageContext } from '@/hooks';
+import { useDocumentStore } from '@/stores/documentStore';
 import { searchPages } from '@/lib/search/keyword';
+import { rankSearchResults } from '@/lib/api/search-client';
 import type { SearchResult } from '@/lib/search/keyword';
 
 function ViewerContent() {
@@ -28,14 +32,20 @@ function ViewerContent() {
   const documentId = searchParams.get('id');
 
   const { document, loadDocument, isLoading: isPDFLoading, getPDFBlob } = usePDF();
-  const { messages, isLoading: isChatLoading, error: chatError, sendMessage, loadHistory } = useChat();
+  const { messages, isLoading: isChatLoading, error: chatError, sendMessage, loadHistory, editMessage, deleteMessage, clearHistory } = useChat();
+  const { setLastOpenedDocument, setCurrentPage: setStoreCurrentPage } = useDocumentStore();
 
   const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isRanking, setIsRanking] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  // Keep track of the current blob URL to properly revoke it
+  const [referencedPages, setReferencedPages] = useState<number[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const blobUrlRef = useRef<string | null>(null);
+  
+  // Session-based search cache (cleared on page refresh)
+  const searchCacheRef = useRef<Map<string, SearchResult[]>>(new Map());
 
   const pages = useMemo(() => document?.pages || [], [document?.pages]);
   const {
@@ -50,12 +60,10 @@ function ViewerContent() {
     if (documentId) {
       loadDocument(documentId);
       loadHistory(documentId);
+      // Update last opened document for state persistence
+      setLastOpenedDocument(documentId);
     }
-  }, [documentId, loadDocument, loadHistory]);
-
-  // Note: We don't reset PDF.js here because it can cause errors if a PDF is still loading
-  // The PDF.js worker is shared and should remain initialized across PDF loads
-  // It will be reset when navigating away from the viewer page (handled in main page)
+  }, [documentId, loadDocument, loadHistory, setLastOpenedDocument]);
 
   // Load PDF blob for viewing once document is loaded
   useEffect(() => {
@@ -64,12 +72,10 @@ function ViewerContent() {
 
     const loadPDFBlob = async () => {
       if (!documentId || !document) {
-        // Clear blob URL if no document
         if (blobUrlRef.current) {
           previousBlobUrl = blobUrlRef.current;
           blobUrlRef.current = null;
           setPdfFileUrl(null);
-          // Revoke after a delay to ensure PDF viewer has finished using it
           setTimeout(() => {
             if (previousBlobUrl) {
               URL.revokeObjectURL(previousBlobUrl);
@@ -80,57 +86,46 @@ function ViewerContent() {
         return;
       }
 
-      // Store the previous blob URL to revoke it later
       previousBlobUrl = blobUrlRef.current;
 
-      // First check if document has blob inline
       if (document.pdfBlob) {
         const blobUrl = URL.createObjectURL(document.pdfBlob);
         if (isMounted) {
           blobUrlRef.current = blobUrl;
           setPdfFileUrl(blobUrl);
-          // Revoke previous blob URL after new one is set (with small delay)
           if (previousBlobUrl) {
             setTimeout(() => {
               URL.revokeObjectURL(previousBlobUrl!);
             }, 100);
           }
         } else {
-          // Component unmounted, revoke immediately
           URL.revokeObjectURL(blobUrl);
         }
         return;
       }
 
-      // Otherwise try to get it from DB
       const blob = await getPDFBlob(documentId);
       if (blob && isMounted) {
         const blobUrl = URL.createObjectURL(blob);
         blobUrlRef.current = blobUrl;
         setPdfFileUrl(blobUrl);
-        // Revoke previous blob URL after new one is set (with small delay)
         if (previousBlobUrl) {
           setTimeout(() => {
             URL.revokeObjectURL(previousBlobUrl!);
           }, 100);
         }
       } else if (blob && !isMounted) {
-        // Component unmounted, revoke immediately
         URL.revokeObjectURL(URL.createObjectURL(blob));
       }
     };
 
     loadPDFBlob();
 
-    // Cleanup blob URL on unmount or when dependencies change
     return () => {
       isMounted = false;
-      // Only revoke on unmount, not on dependency changes
-      // (dependency changes are handled in loadPDFBlob)
       if (blobUrlRef.current) {
         const urlToRevoke = blobUrlRef.current;
         blobUrlRef.current = null;
-        // Small delay to ensure any pending operations complete
         setTimeout(() => {
           URL.revokeObjectURL(urlToRevoke);
         }, 100);
@@ -138,13 +133,18 @@ function ViewerContent() {
     };
   }, [documentId, document, getPDFBlob]);
 
-  // Handle page change from viewer or navigator
+  // Extract referenced pages from the latest assistant message
+  useEffect(() => {
+    const lastAssistant = messages.filter(m => m.role === 'assistant').pop();
+    setReferencedPages(lastAssistant?.pageReferences || []);
+  }, [messages]);
+
   const handlePageChange = useCallback((page: number) => {
     console.log('[ViewerPage] handlePageChange called', { page });
     setCurrentPage(page);
-  }, [setCurrentPage]);
+    setStoreCurrentPage(page);
+  }, [setCurrentPage, setStoreCurrentPage]);
 
-  // Handle sending a message
   const handleSendMessage = useCallback(
     async (message: string) => {
       if (!documentId || !contextString) return;
@@ -153,32 +153,134 @@ function ViewerContent() {
     [documentId, contextString, currentPage, sendMessage]
   );
 
-  // Handle search (for results dropdown - debounced)
+  const handleEditMessage = useCallback(
+    async (messageId: string, newContent: string) => {
+      if (!contextString) return;
+      await editMessage(messageId, newContent, contextString, currentPage);
+    },
+    [contextString, currentPage, editMessage]
+  );
+
+  const handleDeleteMessage = useCallback(
+    async (messageId: string) => {
+      await deleteMessage(messageId);
+    },
+    [deleteMessage]
+  );
+
+  const handleOpenHistory = useCallback(() => {
+    setIsHistoryOpen(true);
+  }, []);
+
+  const handleCloseHistory = useCallback(() => {
+    setIsHistoryOpen(false);
+  }, []);
+
+  const handleClearHistory = useCallback(async () => {
+    if (documentId) {
+      await clearHistory(documentId);
+      setIsHistoryOpen(false);
+    }
+  }, [documentId, clearHistory]);
+
   const handleSearch = useCallback(
-    (query: string) => {
+    async (query: string) => {
       if (!pages.length) {
         setSearchResults([]);
         return;
       }
+
+      const trimmedQuery = query.trim();
+      if (!trimmedQuery) {
+        setSearchResults([]);
+        return;
+      }
+
+      // Check cache first
+      const cacheKey = `${documentId || 'default'}-${trimmedQuery.toLowerCase()}`;
+      const cachedResults = searchCacheRef.current.get(cacheKey);
+      if (cachedResults) {
+        setSearchResults(cachedResults);
+        return;
+      }
+
       setIsSearching(true);
-      // Note: searchQuery is already updated via onQueryChange for real-time highlighting
-      const results = query.trim() ? searchPages(pages, query) : [];
-      setSearchResults(results);
-      setIsSearching(false);
+      
+      try {
+        // Perform keyword search
+        const keywordResults = searchPages(pages, trimmedQuery);
+        
+        // If 3+ results, use LLM-assisted ranking
+        if (keywordResults.length >= 3) {
+          setIsRanking(true);
+          
+          try {
+            // Prepare candidates for ranking (limit to top 10 for performance)
+            const candidates = keywordResults.slice(0, 10).map((r) => ({
+              pageNumber: r.pageNumber,
+              snippet: r.snippet,
+            }));
+            
+            const { rankedResults } = await rankSearchResults(trimmedQuery, candidates);
+            
+            // Merge LLM rankings with original results
+            const rankedMap = new Map(
+              rankedResults.map((r) => [r.pageNumber, r.relevanceScore])
+            );
+            
+            const enhancedResults: SearchResult[] = keywordResults.map((result) => ({
+              ...result,
+              relevanceScore: rankedMap.get(result.pageNumber),
+              isLLMRanked: rankedMap.has(result.pageNumber),
+            }));
+            
+            // Sort by relevance score (ranked results first), then by match count
+            enhancedResults.sort((a, b) => {
+              // Ranked results come first
+              if (a.isLLMRanked && !b.isLLMRanked) return -1;
+              if (!a.isLLMRanked && b.isLLMRanked) return 1;
+              
+              // Among ranked results, sort by relevance score
+              if (a.isLLMRanked && b.isLLMRanked) {
+                return (b.relevanceScore || 0) - (a.relevanceScore || 0);
+              }
+              
+              // Among unranked results, sort by match count
+              return b.matchCount - a.matchCount;
+            });
+            
+            // Cache and set results
+            searchCacheRef.current.set(cacheKey, enhancedResults);
+            setSearchResults(enhancedResults);
+          } catch (rankError) {
+            console.error('LLM ranking failed, using keyword results:', rankError);
+            // Fall back to keyword results on ranking failure
+            searchCacheRef.current.set(cacheKey, keywordResults);
+            setSearchResults(keywordResults);
+          } finally {
+            setIsRanking(false);
+          }
+        } else {
+          // For fewer results, use keyword search directly
+          searchCacheRef.current.set(cacheKey, keywordResults);
+          setSearchResults(keywordResults);
+        }
+      } finally {
+        setIsSearching(false);
+      }
     },
-    [pages]
+    [pages, documentId]
   );
 
-  // Handle clicking a page reference (from search or chat)
   const handlePageClick = useCallback(
     (page: number) => {
       console.log('[ViewerPage] handlePageClick called', { page });
       setCurrentPage(page);
+      setStoreCurrentPage(page);
     },
-    [setCurrentPage]
+    [setCurrentPage, setStoreCurrentPage]
   );
 
-  // Handle document load from PDFViewer
   const handleDocumentLoad = useCallback((numPages: number) => {
     console.log(`PDF loaded: ${numPages} pages`);
   }, []);
@@ -186,18 +288,19 @@ function ViewerContent() {
   // Redirect if no document
   if (!documentId) {
     return (
-      <div className="flex items-center justify-center h-screen bg-neutral-950">
-        <div className="text-center card p-8 max-w-md mx-4">
-          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-primary-500/20 to-accent-500/10 flex items-center justify-center border border-primary-500/20 ring-1 ring-primary-500/20">
-            <svg className="w-8 h-8 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex items-center justify-center h-screen bg-[#0a0a0b]">
+        <div className="text-center p-8 max-w-md mx-4">
+          <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center border border-emerald-500/20 ring-1 ring-emerald-500/10">
+            <svg className="w-10 h-10 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-neutral-100 mb-2">No document loaded</h3>
-          <p className="text-sm text-neutral-400 mb-6">Upload a PDF to get started</p>
+          <h3 className="text-xl font-semibold text-white mb-3" style={{ fontFamily: 'Outfit, sans-serif' }}>No document loaded</h3>
+          <p className="text-sm text-gray-400 mb-8" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>Upload a PDF to get started with intelligent analysis</p>
           <button
             onClick={() => router.push('/')}
-            className="px-6 py-2 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-lg hover:from-primary-500 hover:to-primary-600 transition-all premium-shadow"
+            className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl hover:from-emerald-400 hover:to-teal-400 transition-all duration-300 font-medium shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30"
+            style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}
           >
             Upload a PDF
           </button>
@@ -207,31 +310,51 @@ function ViewerContent() {
   }
 
   return (
-    <div className="flex h-screen bg-neutral-950 overflow-hidden">
+    <div className="flex h-screen bg-[#0a0a0b] overflow-hidden">
+      {/* Google Fonts */}
+      {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+      <link rel="preconnect" href="https://fonts.googleapis.com" />
+      {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
       {/* Left side - PDF Viewer */}
       <div className="flex-1 flex flex-col min-w-0 relative">
-        {/* Top Bar: Back button, Title, Search */}
-        <div className="h-16 bg-gradient-to-r from-neutral-900/90 to-neutral-900/80 backdrop-blur-xl border-b border-neutral-800 flex items-center px-4 z-20 gap-4">
+        {/* Top Bar */}
+        <div className="h-16 bg-gradient-to-r from-[#0f1419] to-[#0a0a0b] backdrop-blur-xl border-b border-white/5 flex items-center px-4 z-20 gap-4">
           {/* Back button */}
           <button
             onClick={() => router.push('/')}
-            className="p-2 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-primary-400 transition-all hover:premium-shadow"
+            className="p-2.5 rounded-xl hover:bg-white/5 text-gray-400 hover:text-emerald-400 transition-all duration-300 group"
             title="Back to documents"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 transition-transform duration-300 group-hover:-translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </button>
 
+          {/* Divider */}
+          <div className="h-8 w-px bg-white/10" />
+
           {/* Document title */}
-          <div className="flex-shrink-0 max-w-[200px]">
-            <h1 className="text-sm font-medium text-neutral-100 truncate" title={document?.metadata.title}>
+          <div className="flex-shrink-0 max-w-[250px]">
+            <h1
+              className="text-sm font-semibold text-white truncate"
+              title={document?.metadata.title}
+              style={{ fontFamily: 'Outfit, sans-serif' }}
+            >
               {document?.metadata.title || 'Loading...'}
             </h1>
             {document && (
-              <p className="text-xs text-neutral-500">{document.metadata.pageCount} pages</p>
+              <p className="text-xs text-gray-500" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
+                {document.metadata.pageCount} pages · {new Date(document.metadata.uploadDate).toLocaleDateString()}
+              </p>
             )}
           </div>
+
+          {/* Spacer */}
+          <div className="flex-1" />
 
           {/* Search */}
           <div className="flex-1 max-w-xl">
@@ -239,39 +362,50 @@ function ViewerContent() {
               onSearch={handleSearch}
               results={searchResults}
               isSearching={isSearching}
+              isRanking={isRanking}
               onResultClick={handlePageClick}
               onQueryChange={setSearchQuery}
+              documentId={documentId || undefined}
             />
           </div>
         </div>
 
         {/* PDF Viewer Container */}
-        <div className="flex-1 overflow-hidden relative bg-neutral-950">
+        <div className="flex-1 overflow-hidden relative bg-[#0a0a0b]">
           {isPDFLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <div className="w-12 h-12 border-4 border-neutral-800 border-t-primary-500 rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-sm text-neutral-400">Loading document...</p>
+                {/* Enhanced Loading Spinner */}
+                <div className="relative w-16 h-16 mx-auto mb-6">
+                  <div className="absolute inset-0 rounded-full border-4 border-[#0f1419]" />
+                  <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin" />
+                  <div className="absolute inset-2 rounded-full border-4 border-transparent border-t-teal-500 animate-spin animation-delay-150" />
+                  <div className="absolute inset-4 rounded-full border-4 border-transparent border-t-cyan-500 animate-spin animation-delay-300" />
+                </div>
+                <p className="text-sm text-gray-400" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>Loading document...</p>
               </div>
             </div>
           ) : pdfFileUrl ? (
-            <PDFViewer
-              file={pdfFileUrl}
-              currentPage={currentPage}
-              onPageChange={handlePageChange}
-              onDocumentLoad={handleDocumentLoad}
-              searchQuery={searchQuery}
-            />
+            <PDFErrorBoundary>
+              <PDFViewer
+                file={pdfFileUrl}
+                currentPage={currentPage}
+                onPageChange={handlePageChange}
+                onDocumentLoad={handleDocumentLoad}
+                searchQuery={searchQuery}
+                highlightedPages={referencedPages}
+              />
+            </PDFErrorBoundary>
           ) : (
-            <div className="flex items-center justify-center h-full text-neutral-400">
+            <div className="flex items-center justify-center h-full text-gray-400">
               <div className="text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-primary-500/20 to-accent-500/10 flex items-center justify-center border border-primary-500/20 ring-1 ring-primary-500/20">
-                  <svg className="w-8 h-8 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-emerald-500/10 to-teal-500/10 flex items-center justify-center border border-emerald-500/20 ring-1 ring-emerald-500/10">
+                  <svg className="w-10 h-10 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <p className="text-lg font-medium text-neutral-300 mb-1">Loading PDF...</p>
-                <p className="text-sm text-neutral-500">Please wait while we prepare your document</p>
+                <p className="text-lg font-medium text-gray-300 mb-2" style={{ fontFamily: 'Outfit, sans-serif' }}>Loading PDF...</p>
+                <p className="text-sm text-gray-500" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>Please wait while we prepare your document</p>
               </div>
             </div>
           )}
@@ -280,28 +414,47 @@ function ViewerContent() {
         {/* Floating Page Navigator */}
         {totalPages > 0 && (
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
-            <div className="glass-panel rounded-2xl px-4 py-2 premium-shadow-lg">
-              <PageNavigator
-                currentPage={currentPage}
-                totalPages={totalPages}
-                onPageChange={handlePageChange}
-                showKeyboardHints
-              />
+            <div className="relative group">
+              {/* Glow effect */}
+              <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-cyan-500/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+              {/* Navigator container */}
+              <div className="relative bg-gradient-to-br from-[#0f1419] to-[#0a0a0b] rounded-2xl px-4 py-2.5 border border-white/5 shadow-2xl">
+                <PageNavigator
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={handlePageChange}
+                  showKeyboardHints
+                />
+              </div>
             </div>
           </div>
         )}
       </div>
 
       {/* Right side - Chat Panel */}
-      <div className="w-[400px] flex-shrink-0 border-l border-neutral-800 bg-gradient-to-b from-neutral-900/30 to-neutral-900/20 backdrop-blur-sm flex flex-col">
-        <ChatPanel
-          messages={messages}
-          isLoading={isChatLoading}
-          error={chatError}
-          onSendMessage={handleSendMessage}
-          onPageClick={handlePageClick}
-        />
+      <div className="w-[400px] flex-shrink-0 border-l border-white/5 bg-gradient-to-b from-[#0f1419]/50 to-[#0a0a0b]/30 backdrop-blur-sm flex flex-col">
+        <ChatErrorBoundary>
+          <ChatPanel
+            messages={messages}
+            isLoading={isChatLoading}
+            error={chatError}
+            onSendMessage={handleSendMessage}
+            onPageClick={handlePageClick}
+            onEditMessage={handleEditMessage}
+            onDeleteMessage={handleDeleteMessage}
+            onOpenHistory={handleOpenHistory}
+          />
+        </ChatErrorBoundary>
       </div>
+
+      {/* Chat History Sidebar */}
+      <ChatHistorySidebar
+        messages={messages}
+        isOpen={isHistoryOpen}
+        onClose={handleCloseHistory}
+        onClearHistory={handleClearHistory}
+      />
     </div>
   );
 }
@@ -309,10 +462,16 @@ function ViewerContent() {
 export default function ViewerPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center h-screen bg-neutral-950">
+      <div className="flex items-center justify-center h-screen bg-[#0a0a0b]">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-neutral-800 border-t-primary-500 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-sm text-neutral-400">Loading viewer...</p>
+          {/* Enhanced Loading Spinner */}
+          <div className="relative w-16 h-16 mx-auto mb-6">
+            <div className="absolute inset-0 rounded-full border-4 border-[#0f1419]" />
+            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin" />
+            <div className="absolute inset-2 rounded-full border-4 border-transparent border-t-teal-500 animate-spin animation-delay-150" />
+            <div className="absolute inset-4 rounded-full border-4 border-transparent border-t-cyan-500 animate-spin animation-delay-300" />
+          </div>
+          <p className="text-sm text-gray-400" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>Loading viewer...</p>
         </div>
       </div>
     }>

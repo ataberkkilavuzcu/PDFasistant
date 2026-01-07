@@ -9,6 +9,10 @@ export interface SearchResult {
   snippet: string;
   matchCount: number;
   matchPositions: number[];
+  /** Relevance score from LLM ranking (0-100), undefined if not ranked */
+  relevanceScore?: number;
+  /** Whether this result was ranked by LLM */
+  isLLMRanked?: boolean;
 }
 
 /**

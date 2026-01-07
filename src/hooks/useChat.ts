@@ -27,6 +27,23 @@ interface UseChatReturn extends ChatState {
   clearHistory: (documentId: string) => Promise<void>;
   /** Cancel the current streaming request */
   cancelMessage: () => void;
+  /** Edit a user message and regenerate AI response */
+  editMessage: (
+    messageId: string,
+    newContent: string,
+    pageContext: string,
+    currentPage: number
+  ) => Promise<void>;
+  /** Delete a message (and its response if it's a user message) */
+  deleteMessage: (messageId: string) => Promise<void>;
+  /** Delete multiple messages at once */
+  deleteMessages: (messageIds: string[]) => Promise<void>;
+  /** Search messages by content */
+  searchMessages: (query: string) => ChatMessage[];
+  /** Get message count for current document */
+  getMessageCount: () => number;
+  /** Export conversation as text */
+  exportConversation: () => string;
 }
 
 /**
@@ -240,12 +257,119 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     setState({ messages: [], isLoading: false, error: null });
   }, []);
 
+  const deleteMessage = useCallback(async (messageId: string) => {
+    const messageIndex = state.messages.findIndex((m) => m.id === messageId);
+    if (messageIndex === -1) return;
+
+    const message = state.messages[messageIndex];
+    const messagesToDelete: string[] = [messageId];
+
+    // If it's a user message, also delete the following assistant response
+    if (message.role === 'user' && messageIndex < state.messages.length - 1) {
+      const nextMessage = state.messages[messageIndex + 1];
+      if (nextMessage.role === 'assistant') {
+        messagesToDelete.push(nextMessage.id);
+      }
+    }
+
+    // Delete from DB
+    await Promise.all(messagesToDelete.map((id) => db.messages.delete(id)));
+
+    // Update state
+    setState((prev) => ({
+      ...prev,
+      messages: prev.messages.filter((m) => !messagesToDelete.includes(m.id)),
+    }));
+  }, [state.messages]);
+
+  const editMessage = useCallback(
+    async (
+      messageId: string,
+      newContent: string,
+      pageContext: string,
+      currentPage: number
+    ) => {
+      const messageIndex = state.messages.findIndex((m) => m.id === messageId);
+      if (messageIndex === -1) return;
+
+      const message = state.messages[messageIndex];
+      if (message.role !== 'user') return; // Only allow editing user messages
+
+      // Delete this message and all subsequent messages
+      const messagesToDelete = state.messages.slice(messageIndex).map((m) => m.id);
+      await Promise.all(messagesToDelete.map((id) => db.messages.delete(id)));
+
+      // Update state to remove deleted messages
+      setState((prev) => ({
+        ...prev,
+        messages: prev.messages.slice(0, messageIndex),
+      }));
+
+      // Re-send the edited message (this will create new user + assistant messages)
+      await sendMessage(message.documentId, newContent, pageContext, currentPage);
+    },
+    [state.messages, sendMessage]
+  );
+
+  /**
+   * Delete multiple messages at once
+   */
+  const deleteMessages = useCallback(async (messageIds: string[]) => {
+    // Delete from DB
+    await Promise.all(messageIds.map((id) => db.messages.delete(id)));
+
+    // Update state
+    setState((prev) => ({
+      ...prev,
+      messages: prev.messages.filter((m) => !messageIds.includes(m.id)),
+    }));
+  }, []);
+
+  /**
+   * Search messages by content (case-insensitive)
+   */
+  const searchMessages = useCallback((query: string): ChatMessage[] => {
+    if (!query.trim()) return state.messages;
+    
+    const lowerQuery = query.toLowerCase();
+    return state.messages.filter((msg) =>
+      msg.content.toLowerCase().includes(lowerQuery)
+    );
+  }, [state.messages]);
+
+  /**
+   * Get current message count
+   */
+  const getMessageCount = useCallback((): number => {
+    return state.messages.length;
+  }, [state.messages]);
+
+  /**
+   * Export conversation as formatted text
+   */
+  const exportConversation = useCallback((): string => {
+    return state.messages
+      .map((msg) => {
+        const role = msg.role === 'user' ? 'User' : 'Assistant';
+        const timestamp = new Date(msg.timestamp).toLocaleString();
+        const pageInfo = msg.pageContext ? ` (Page ${msg.pageContext})` : '';
+        return `[${timestamp}] ${role}${pageInfo}:\n${msg.content}\n`;
+      })
+      .join('\n---\n\n');
+  }, [state.messages]);
+
   return {
     ...state,
     sendMessage,
     loadHistory,
     clearHistory,
     cancelMessage,
+    editMessage,
+    deleteMessage,
+    deleteMessages,
+    searchMessages,
+    getMessageCount,
+    exportConversation,
   };
 }
 

@@ -51,6 +51,7 @@ export interface PDFViewerProps {
   onZoomChange?: (zoom: number) => void;
   initialZoom?: number;
   searchQuery?: string; // Search query to highlight in the PDF
+  highlightedPages?: number[]; // Pages to highlight (e.g., referenced by AI)
 }
 
 export function PDFViewerClient(props: PDFViewerProps) {
@@ -141,7 +142,7 @@ export function PDFViewerClient(props: PDFViewerProps) {
     );
   }
 
-  return <PDFViewerImpl Document={Document} Page={Page} pdfjs={pdfjs} searchQuery={props.searchQuery} {...props} />;
+  return <PDFViewerImpl Document={Document} Page={Page} pdfjs={pdfjs} {...props} />;
 }
 
 interface PDFViewerImplProps extends PDFViewerProps {
@@ -151,7 +152,6 @@ interface PDFViewerImplProps extends PDFViewerProps {
   Page: React.ComponentType<any>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pdfjs: any;
-  searchQuery?: string;
 }
 
 // Memoized page container to prevent re-renders when other pages become current
@@ -159,15 +159,17 @@ interface PDFViewerImplProps extends PDFViewerProps {
 const PageContainer = memo(function PageContainer({
   pageNum,
   isCurrent,
+  isHighlighted,
   setPageRef,
   children,
 }: {
   pageNum: number;
   isCurrent: boolean;
+  isHighlighted: boolean;
   setPageRef: (pageNum: number) => (el: HTMLDivElement | null) => void;
   children: React.ReactNode;
 }) {
-  console.log(`[PageContainer] Render page ${pageNum}, isCurrent: ${isCurrent}`);
+  console.log(`[PageContainer] Render page ${pageNum}, isCurrent: ${isCurrent}, isHighlighted: ${isHighlighted}`);
 
   return (
     <div
@@ -180,19 +182,21 @@ const PageContainer = memo(function PageContainer({
       {isCurrent && (
         <div className="absolute -inset-[2px] -z-10 rounded-lg ring-2 ring-accent-500/50 pointer-events-none" />
       )}
+      {/* Referenced page indicator ring - shown for AI-referenced pages */}
+      {isHighlighted && !isCurrent && (
+        <div className="absolute -inset-[2px] -z-10 rounded-lg ring-2 ring-amber-500/40 pointer-events-none" />
+      )}
       {children}
     </div>
   );
 }, (prevProps, nextProps) => {
-  // Custom comparison: only re-render when isCurrent changes for THIS specific page
-  // When navigating from page 1 to 2:
-  // - Page 1: isCurrent changes true→false → re-render
-  // - Page 2: isCurrent changes false→true → re-render
-  // - Pages 3-6: isCurrent stays false→false → NO RE-RENDER (refs stay stable!)
-  const shouldReRender = prevProps.isCurrent !== nextProps.isCurrent;
+  // Custom comparison: only re-render when isCurrent or isHighlighted changes for THIS specific page
+  const shouldReRender = 
+    prevProps.isCurrent !== nextProps.isCurrent ||
+    prevProps.isHighlighted !== nextProps.isHighlighted;
 
   if (shouldReRender) {
-    console.log(`[PageContainer] Page ${nextProps.pageNum} will re-render: isCurrent changed from ${prevProps.isCurrent} to ${nextProps.isCurrent}`);
+    console.log(`[PageContainer] Page ${nextProps.pageNum} will re-render: isCurrent: ${prevProps.isCurrent}→${nextProps.isCurrent}, isHighlighted: ${prevProps.isHighlighted}→${nextProps.isHighlighted}`);
   }
 
   // Return true to SKIP re-render, false to allow re-render
@@ -210,6 +214,7 @@ function PDFViewerImpl({
   onZoomChange,
   initialZoom = DEFAULT_ZOOM,
   searchQuery,
+  highlightedPages = [],
 }: PDFViewerImplProps) {
   // Configure options to pass pdfjs and explicitly disable fake worker
   const documentOptions = useMemo(() => {
@@ -646,45 +651,23 @@ function PDFViewerImpl({
               const charsIntoItem = Math.max(0, overlapStart - itemStart);
               const matchLengthInItem = overlapEnd - overlapStart;
 
-              // FIX: Use canvas text measurement for accurate width calculation
-              // This handles proportional fonts correctly (not just monospaced)
-              const canvas = document.createElement('canvas');
-              const context = canvas.getContext('2d');
-              if (context) {
-                // Use the font size from the text item
-                const fontSize = itemData.height;
-                context.font = `${fontSize}px sans-serif`;
+              // FIX: Use the PDF's own width measurements for accurate highlighting
+              // The itemData.width is the actual width of this text item as reported by PDF.js
+              // We calculate proportional widths based on this to match the actual PDF rendering
+              const totalCharsInItem = itemData.text.length;
+              const charWidth = itemData.width / totalCharsInItem;
 
-                // Get the substring that matches
-                const matchSubstring = itemData.text.substring(charsIntoItem, charsIntoItem + matchLengthInItem);
+              // Calculate offset and match width using the PDF's measurement
+              // This works because PDF.js already accounts for the actual font used
+              const offsetX = charsIntoItem * charWidth;
+              const matchWidth = matchLengthInItem * charWidth;
 
-                // Measure the width of the matched substring
-                const matchWidth = context.measureText(matchSubstring).width;
-
-                // Calculate the offset from the start of the item
-                let offsetX = 0;
-                if (charsIntoItem > 0) {
-                  const prefix = itemData.text.substring(0, charsIntoItem);
-                  offsetX = context.measureText(prefix).width;
-                }
-
-                matchItems.push({
-                  x: itemData.x + offsetX,
-                  y: itemData.y,
-                  width: matchWidth,
-                  height: itemData.height
-                });
-              } else {
-                // Fallback to old calculation if canvas not available
-                const charWidth = itemData.width / itemData.text.length;
-                const matchWidth = matchLengthInItem * charWidth;
-                matchItems.push({
-                  x: itemData.x + (charsIntoItem * charWidth),
-                  y: itemData.y,
-                  width: matchWidth,
-                  height: itemData.height
-                });
-              }
+              matchItems.push({
+                x: itemData.x + offsetX,
+                y: itemData.y,
+                width: matchWidth,
+                height: itemData.height
+              });
             }
 
             currentPos = itemEnd;
@@ -903,10 +886,11 @@ function PDFViewerImpl({
   // The PageContainer will handle its own re-rendering via React.memo
   // Include zoom and zoomMode in dependencies to ensure re-render when zoom changes
   const pageElements = useMemo(() => {
-    console.log('[PageElements] Recomputing page elements, zoom:', zoom, 'zoomMode:', zoomMode);
+    console.log('[PageElements] Recomputing page elements, zoom:', zoom, 'zoomMode:', zoomMode, 'highlightedPages:', highlightedPages);
     return Array.from({ length: numPages }, (_, index) => {
       const pageNum = index + 1;
       const isCurrent = currentPage === pageNum;
+      const isHighlighted = highlightedPages.includes(pageNum);
       const pageScale = getPageScale();
       const pageWidth = getPageWidth();
 
@@ -915,6 +899,7 @@ function PDFViewerImpl({
           key={`page-${pageNum}-zoom-${zoom}-mode-${zoomMode}`}
           pageNum={pageNum}
           isCurrent={isCurrent}
+          isHighlighted={isHighlighted}
           setPageRef={setPageRef}
         >
           <Page
@@ -938,7 +923,7 @@ function PDFViewerImpl({
         </PageContainer>
       );
     });
-  }, [numPages, currentPage, zoom, zoomMode, getPageScale, getPageWidth, setPageRef, handlePageLoadSuccess, Page]);
+  }, [numPages, currentPage, zoom, zoomMode, highlightedPages, getPageScale, getPageWidth, setPageRef, handlePageLoadSuccess, Page]);
 
   if (!file) {
     return (
