@@ -27,7 +27,9 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(function ChatI
   onValueChange,
 }, ref) {
   const [message, setMessage] = useState(initialValue);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const shortcutsRef = useRef<HTMLDivElement>(null);
 
   // Sync with initial value when it changes
   useEffect(() => {
@@ -91,6 +93,20 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(function ChatI
     [handleSubmit]
   );
 
+  // Close shortcuts popover when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (shortcutsRef.current && !shortcutsRef.current.contains(event.target as Node)) {
+        setShowShortcuts(false);
+      }
+    };
+
+    if (showShortcuts) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showShortcuts]);
+
   return (
     <form onSubmit={handleSubmit} className="p-3 md:p-4">
       <div className="flex gap-2 md:gap-3 items-end">
@@ -145,15 +161,79 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(function ChatI
         </button>
       </div>
 
-      <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 md:mt-3 text-center flex items-center justify-center gap-1">
-        <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">Enter</kbd>
-        <span>to send</span>
-        <span className="text-gray-300 dark:text-gray-600 hidden md:inline">•</span>
-        <span className="hidden md:inline">
-          <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">Shift+Enter</kbd>
-          <span> for new line</span>
-        </span>
-      </p>
+      <div className="mt-2 md:mt-3 text-center flex items-center justify-center gap-1 relative">
+        {/* Info icon with shortcuts popover */}
+        <div ref={shortcutsRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setShowShortcuts(!showShortcuts)}
+            className="p-1 text-gray-400 dark:text-gray-500 hover:text-gray-300 dark:hover:text-gray-400 transition-colors rounded-full hover:bg-white/5 dark:hover:bg-gray-800/50"
+            aria-label="Show keyboard shortcuts"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </button>
+
+          {/* Shortcuts Popover */}
+          {showShortcuts && (
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-[#0f1419] border border-white/10 rounded-lg p-3 shadow-xl z-50 animate-fade-in">
+              <div className="text-xs font-medium text-gray-300 mb-2">Keyboard Shortcuts</div>
+              <div className="space-y-1.5 text-xs text-gray-400">
+                <div className="flex items-center justify-between">
+                  <span>Send message</span>
+                  <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-white/10 rounded border border-white/20">Enter</kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>New line</span>
+                  <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-white/10 rounded border border-white/20">Shift+Enter</kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Next page</span>
+                  <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-white/10 rounded border border-white/20">Space</kbd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Navigate pages</span>
+                  <div className="flex gap-1">
+                    <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-white/10 rounded border border-white/20">←</kbd>
+                    <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-white/10 rounded border border-white/20">→</kbd>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>First/Last page</span>
+                  <div className="flex gap-1">
+                    <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-white/10 rounded border border-white/20">Home</kbd>
+                    <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-white/10 rounded border border-white/20">End</kbd>
+                  </div>
+                </div>
+              </div>
+              {/* Arrow */}
+              <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-[#0f1419]" />
+            </div>
+          )}
+        </div>
+
+        {/* Enter to send text */}
+        <p className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
+          <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">Enter</kbd>
+          <span>to send</span>
+          <span className="text-gray-300 dark:text-gray-600 hidden md:inline">•</span>
+          <span className="hidden md:inline">
+            <kbd className="px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">Shift+Enter</kbd>
+            <span> for new line</span>
+          </span>
+        </p>
+      </div>
     </form>
   );
 });
