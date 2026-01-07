@@ -228,3 +228,27 @@ body {
     transform: translateY(-20px);
   }
 }
+
+/* Prevent tooltips on send button */
+button[data-no-tooltip] {
+  pointer-events: auto !important;
+}
+
+button[data-no-tooltip]:hover::before,
+button[data-no-tooltip]:hover::after {
+  display: none !important;
+  content: none !important;
+}
+
+/* Prevent browser default tooltips - hide title tooltip */
+button[data-no-tooltip][title],
+button[data-no-tooltip][title]:hover,
+button[data-no-tooltip][title]:focus {
+  position: relative;
+}
+
+/* Override any tooltip that might appear */
+button[data-no-tooltip]::after {
+  display: none !important;
+  content: none !important;
+}

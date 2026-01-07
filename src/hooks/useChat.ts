@@ -17,13 +17,18 @@ interface UseChatOptions {
 }
 
 interface UseChatReturn extends ChatState {
+  currentConversationId: string | null;
+  /** All messages for the current document (for history sidebar) */
+  allDocumentMessages: ChatMessage[];
   sendMessage: (
     documentId: string,
     message: string,
     pageContext: string,
     currentPage: number
   ) => Promise<void>;
-  loadHistory: (documentId: string) => Promise<void>;
+  loadHistory: (documentId: string, conversationId?: string) => Promise<void>;
+  loadConversation: (conversationId: string) => Promise<void>;
+  createNewConversation: (documentId: string) => string;
   clearHistory: (documentId: string) => Promise<void>;
   /** Cancel the current streaming request */
   cancelMessage: () => void;
@@ -44,6 +49,8 @@ interface UseChatReturn extends ChatState {
   getMessageCount: () => number;
   /** Export conversation as text */
   exportConversation: () => string;
+  /** Get all conversations for a document */
+  getConversations: (documentId: string) => Promise<Array<{ id: string; firstMessage: string; timestamp: Date; messageCount: number }>>;
 }
 
 /**
@@ -51,6 +58,13 @@ interface UseChatReturn extends ChatState {
  */
 function generateMessageId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
+ * Generate a unique conversation ID
+ */
+function generateConversationId(documentId: string): string {
+  return `${documentId}-conv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
 /**
@@ -65,21 +79,94 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     error: null,
   });
 
+  // Track current conversation
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  
+  // Track all messages for the document (for sidebar display)
+  const [allDocumentMessages, setAllDocumentMessages] = useState<ChatMessage[]>([]);
+
   // Track abort controller for cancelling requests
   const abortControllerRef = useRef<AbortController | null>(null);
   // Track if we're streaming to prevent duplicate messages
   const isStreamingRef = useRef(false);
 
-  const loadHistory = useCallback(async (documentId: string) => {
+  const createNewConversation = useCallback((documentId: string): string => {
+    const newConversationId = generateConversationId(documentId);
+    setCurrentConversationId(newConversationId);
+    // Keep allDocumentMessages intact, just clear current conversation messages
+    setState((prev) => ({
+      ...prev,
+      messages: [],
+      isLoading: false,
+      error: null,
+    }));
+    return newConversationId;
+  }, []);
+
+  const loadConversation = useCallback(async (conversationId: string) => {
     try {
-      const messages = await db.messages
+      // Filter from allDocumentMessages if available, otherwise fetch from DB
+      let messages: ChatMessage[];
+      
+      if (allDocumentMessages.length > 0) {
+        messages = allDocumentMessages.filter(m => m.conversationId === conversationId);
+      } else {
+        const dbMessages = await db.messages
+          .where('conversationId')
+          .equals(conversationId)
+          .sortBy('timestamp');
+        messages = dbMessages as ChatMessage[];
+      }
+
+      setCurrentConversationId(conversationId);
+      setState((prev) => ({
+        ...prev,
+        messages,
+        error: null,
+      }));
+    } catch (err) {
+      setState((prev) => ({
+        ...prev,
+        error: err instanceof Error ? err.message : 'Failed to load conversation',
+      }));
+    }
+  }, [allDocumentMessages]);
+
+  const loadHistory = useCallback(async (documentId: string, conversationId?: string) => {
+    try {
+      // Always load ALL messages for this document (for sidebar)
+      const allMessages = await db.messages
         .where('documentId')
         .equals(documentId)
         .sortBy('timestamp');
+      
+      setAllDocumentMessages(allMessages as ChatMessage[]);
+      
+      let messages: ChatMessage[];
+      
+      if (conversationId) {
+        // Load specific conversation
+        messages = allMessages.filter(m => m.conversationId === conversationId) as ChatMessage[];
+        setCurrentConversationId(conversationId);
+      } else {
+        // Load latest conversation or create new one
+        if (allMessages.length > 0) {
+          // Get the most recent conversation
+          const latestMessage = allMessages[allMessages.length - 1];
+          const latestConvId = latestMessage.conversationId;
+          messages = allMessages.filter(m => m.conversationId === latestConvId) as ChatMessage[];
+          setCurrentConversationId(latestConvId);
+        } else {
+          // No messages yet, create new conversation
+          const newConvId = generateConversationId(documentId);
+          setCurrentConversationId(newConvId);
+          messages = [];
+        }
+      }
 
       setState((prev) => ({
         ...prev,
-        messages: messages as ChatMessage[],
+        messages,
         error: null,
       }));
     } catch (err) {
@@ -104,10 +191,17 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
       isStreamingRef.current = true;
 
+      // Ensure we have a conversation ID
+      const convId = currentConversationId || generateConversationId(documentId);
+      if (!currentConversationId) {
+        setCurrentConversationId(convId);
+      }
+
       // Add user message
       const userMessage: ChatMessage = {
         id: generateMessageId(),
         documentId,
+        conversationId: convId,
         role: 'user',
         content: message,
         pageContext: currentPage,
@@ -123,12 +217,16 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
       // Save user message to DB
       await db.messages.put(userMessage);
+      
+      // Update allDocumentMessages
+      setAllDocumentMessages((prev) => [...prev, userMessage]);
 
       // Create placeholder for assistant message (for streaming)
       const assistantMessageId = generateMessageId();
       const assistantMessage: ChatMessage = {
         id: assistantMessageId,
         documentId,
+        conversationId: convId,
         role: 'assistant',
         content: '',
         timestamp: new Date(),
@@ -203,6 +301,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         const finalMessage: ChatMessage = {
           id: assistantMessageId,
           documentId,
+          conversationId: convId,
           role: 'assistant',
           content: accumulatedContent,
           pageReferences,
@@ -211,6 +310,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
         // Save assistant message to DB
         await db.messages.put(finalMessage);
+        
+        // Update allDocumentMessages
+        setAllDocumentMessages((prev) => [...prev, finalMessage]);
 
         setState((prev) => {
           const updatedMessages = prev.messages.map((msg) =>
@@ -239,7 +341,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         isStreamingRef.current = false;
       }
     },
-    [state.messages, maxRetries]
+    [state.messages, maxRetries, currentConversationId]
   );
 
   const cancelMessage = useCallback(() => {
@@ -254,6 +356,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
   const clearHistory = useCallback(async (documentId: string) => {
     await db.messages.where('documentId').equals(documentId).delete();
+    setAllDocumentMessages([]);
     setState({ messages: [], isLoading: false, error: null });
   }, []);
 
@@ -358,10 +461,50 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       .join('\n---\n\n');
   }, [state.messages]);
 
+  /**
+   * Get all conversations for a document
+   */
+  const getConversations = useCallback(async (documentId: string) => {
+    try {
+      const messages = await db.messages
+        .where('documentId')
+        .equals(documentId)
+        .sortBy('timestamp');
+
+      // Group by conversation ID
+      const conversationMap = new Map<string, ChatMessage[]>();
+      messages.forEach((msg) => {
+        const convId = msg.conversationId;
+        if (!conversationMap.has(convId)) {
+          conversationMap.set(convId, []);
+        }
+        conversationMap.get(convId)!.push(msg as ChatMessage);
+      });
+
+      // Create conversation summaries
+      return Array.from(conversationMap.entries()).map(([id, msgs]) => {
+        const firstUserMessage = msgs.find(m => m.role === 'user');
+        return {
+          id,
+          firstMessage: firstUserMessage?.content || 'New conversation',
+          timestamp: msgs[0].timestamp,
+          messageCount: msgs.length,
+        };
+      }).sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    } catch (err) {
+      console.error('Failed to get conversations:', err);
+      return [];
+    }
+  }, []);
+
   return {
     ...state,
+    currentConversationId,
+    allDocumentMessages,
     sendMessage,
     loadHistory,
+    loadConversation,
+    createNewConversation,
     clearHistory,
     cancelMessage,
     editMessage,
@@ -370,6 +513,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     searchMessages,
     getMessageCount,
     exportConversation,
+    getConversations,
   };
 }
 

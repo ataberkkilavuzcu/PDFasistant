@@ -37,7 +37,20 @@ function ViewerContent() {
   const documentId = searchParams.get('id');
 
   const { document, loadDocument, isLoading: isPDFLoading, getPDFBlob } = usePDF();
-  const { messages, isLoading: isChatLoading, error: chatError, sendMessage, loadHistory, editMessage, deleteMessage, clearHistory } = useChat();
+  const { 
+    messages, 
+    allDocumentMessages,
+    currentConversationId,
+    isLoading: isChatLoading, 
+    error: chatError, 
+    sendMessage, 
+    loadHistory, 
+    loadConversation,
+    createNewConversation,
+    editMessage, 
+    deleteMessage, 
+    clearHistory 
+  } = useChat();
   const { setLastOpenedDocument, setCurrentPage: setStoreCurrentPage } = useDocumentStore();
 
   const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null);
@@ -196,12 +209,17 @@ function ViewerContent() {
     }
   }, [documentId, clearHistory]);
 
-  // New chat handler - clears messages and starts fresh
-  const handleNewChat = useCallback(async () => {
+  // New chat handler - creates a new conversation without deleting history
+  const handleNewChat = useCallback(() => {
     if (documentId) {
-      await clearHistory(documentId);
+      createNewConversation(documentId);
     }
-  }, [documentId, clearHistory]);
+  }, [documentId, createNewConversation]);
+
+  // Load a specific conversation
+  const handleLoadConversation = useCallback(async (conversationId: string) => {
+    await loadConversation(conversationId);
+  }, [loadConversation]);
 
   // Handle text selected from PDF to add to chat
   const handleAddTextToChat = useCallback((text: string) => {
@@ -621,25 +639,13 @@ function ViewerContent() {
 
       {/* Chat History Sidebar */}
       <ChatHistorySidebar
-        messages={messages}
+        messages={allDocumentMessages}
+        currentConversationId={currentConversationId}
         isOpen={isHistoryOpen}
         onClose={handleCloseHistory}
         onClearHistory={handleClearHistory}
+        onLoadConversation={handleLoadConversation}
       />
-
-      {/* Keyboard shortcuts hint - shown on larger screens */}
-      {!isMobileView && totalPages > 0 && (
-        <div className="fixed bottom-4 right-4 z-30 opacity-0 hover:opacity-100 transition-opacity duration-300">
-          <div className="bg-[#0f1419]/90 backdrop-blur-sm rounded-lg p-3 border border-white/10 text-xs text-gray-400">
-            <div className="font-medium text-gray-300 mb-2">Keyboard Shortcuts</div>
-            <div className="space-y-1">
-              <div><kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">←</kbd> <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">→</kbd> Navigate pages</div>
-              <div><kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">Space</kbd> Next page</div>
-              <div><kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">Home</kbd> <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">End</kbd> First/Last</div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

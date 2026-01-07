@@ -7,6 +7,7 @@ export type MessageRole = 'user' | 'assistant';
 export interface ChatMessage {
   id: string;
   documentId: string;
+  conversationId: string;
   role: MessageRole;
   content: string;
   pageContext?: number;

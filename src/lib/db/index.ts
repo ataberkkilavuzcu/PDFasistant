@@ -35,7 +35,7 @@ export class PDFasistantDB extends Dexie {
     });
 
     // Version 3: Added contentHash for PDF deduplication
-    this.version(DB_VERSION).stores({
+    this.version(3).stores({
       documents: 'id, contentHash, metadata.title, metadata.uploadDate',
       messages: 'id, documentId, timestamp',
       preferences: 'id',
@@ -46,6 +46,23 @@ export class PDFasistantDB extends Dexie {
         if (doc.pdfBlob && !doc.contentHash) {
           const contentHash = await calculateFileHash(doc.pdfBlob);
           await trans.table<StoredDocument>('documents').update(doc.id, { contentHash });
+        }
+      }
+    });
+
+    // Version 4: Added conversationId to messages for conversation sessions
+    this.version(DB_VERSION).stores({
+      documents: 'id, contentHash, metadata.title, metadata.uploadDate',
+      messages: 'id, documentId, conversationId, timestamp, [documentId+conversationId]',
+      preferences: 'id',
+    }).upgrade(async (trans) => {
+      // Migrate existing messages - add default conversationId
+      const messages = await trans.table<StoredMessage>('messages').toArray();
+      for (const message of messages) {
+        if (!message.conversationId) {
+          // Group all existing messages per document into a single "default" conversation
+          const conversationId = `${message.documentId}-default`;
+          await trans.table<StoredMessage>('messages').update(message.id, { conversationId });
         }
       }
     });

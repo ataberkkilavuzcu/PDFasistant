@@ -142,8 +142,27 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(function ChatI
         <button
           type="submit"
           disabled={isDisabled || !message.trim()}
+          data-no-tooltip="true"
           className="px-4 md:px-5 py-3 md:py-4 bg-gradient-to-br from-primary-500 to-emerald-600 text-white rounded-xl md:rounded-2xl hover:from-primary-400 hover:to-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 flex-shrink-0 shadow-lg shadow-primary-500/25 hover:shadow-xl hover:shadow-primary-500/30 hover:scale-105 active:scale-95 disabled:hover:scale-100 disabled:hover:shadow-lg"
-          aria-label="Send message"
+          ref={(btn) => {
+            if (btn) {
+              // Remove any attributes that could cause tooltips
+              btn.removeAttribute('title');
+              btn.removeAttribute('aria-label');
+              // Also remove from SVG
+              const svg = btn.querySelector('svg');
+              if (svg) {
+                svg.removeAttribute('title');
+                svg.removeAttribute('aria-label');
+              }
+            }
+          }}
+          onMouseEnter={(e) => {
+            // Force remove any tooltip attributes that might have been added
+            const btn = e.currentTarget;
+            btn.removeAttribute('title');
+            btn.removeAttribute('aria-label');
+          }}
         >
           <svg
             className="w-5 h-5"

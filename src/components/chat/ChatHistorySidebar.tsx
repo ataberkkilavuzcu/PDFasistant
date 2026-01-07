@@ -8,17 +8,20 @@
 import { useState, useMemo } from 'react';
 import type { ChatMessage } from '@/types/chat';
 
+interface Conversation {
+  id: string;
+  firstMessage: string;
+  timestamp: Date;
+  messageCount: number;
+}
+
 interface ChatHistorySidebarProps {
   messages: ChatMessage[];
   isOpen: boolean;
   onClose: () => void;
   onClearHistory: () => void;
-  onJumpToMessage?: (messageId: string) => void;
-}
-
-interface MessageGroup {
-  date: string;
-  messages: ChatMessage[];
+  onLoadConversation?: (conversationId: string) => void;
+  currentConversationId?: string | null;
 }
 
 function formatDate(date: Date): string {
@@ -52,28 +55,52 @@ export function ChatHistorySidebar({
   isOpen,
   onClose,
   onClearHistory,
+  onLoadConversation,
+  currentConversationId,
 }: ChatHistorySidebarProps) {
   const [showConfirmClear, setShowConfirmClear] = useState(false);
 
-  // Group messages by date
-  const messageGroups = useMemo<MessageGroup[]>(() => {
-    const groups: Map<string, ChatMessage[]> = new Map();
+  // Group messages into conversations
+  const conversations = useMemo<Conversation[]>(() => {
+    const conversationMap = new Map<string, ChatMessage[]>();
     
-    // Only show user messages in the history (as conversation starters)
-    const userMessages = messages.filter((m) => m.role === 'user');
+    messages.forEach((msg) => {
+      const convId = msg.conversationId;
+      if (!conversationMap.has(convId)) {
+        conversationMap.set(convId, []);
+      }
+      conversationMap.get(convId)!.push(msg);
+    });
+
+    return Array.from(conversationMap.entries())
+      .map(([id, msgs]) => {
+        const firstUserMessage = msgs.find(m => m.role === 'user');
+        return {
+          id,
+          firstMessage: firstUserMessage?.content || 'New conversation',
+          timestamp: msgs[0].timestamp,
+          messageCount: msgs.length,
+        };
+      })
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  }, [messages]);
+
+  // Group conversations by date
+  const conversationGroups = useMemo(() => {
+    const groups: Map<string, Conversation[]> = new Map();
     
-    userMessages.forEach((message) => {
-      const dateKey = formatDate(new Date(message.timestamp));
+    conversations.forEach((conv) => {
+      const dateKey = formatDate(new Date(conv.timestamp));
       const existing = groups.get(dateKey) || [];
-      existing.push(message);
+      existing.push(conv);
       groups.set(dateKey, existing);
     });
     
-    return Array.from(groups.entries()).map(([date, msgs]) => ({
+    return Array.from(groups.entries()).map(([date, convs]) => ({
       date,
-      messages: msgs.reverse(), // Most recent first within each group
+      conversations: convs,
     }));
-  }, [messages]);
+  }, [conversations]);
 
   const handleClearClick = () => {
     setShowConfirmClear(true);
@@ -86,6 +113,13 @@ export function ChatHistorySidebar({
 
   const handleCancelClear = () => {
     setShowConfirmClear(false);
+  };
+
+  const handleConversationClick = (conversationId: string) => {
+    if (onLoadConversation) {
+      onLoadConversation(conversationId);
+      onClose();
+    }
   };
 
   if (!isOpen) return null;
@@ -121,20 +155,18 @@ export function ChatHistorySidebar({
         {/* Stats */}
         <div className="px-4 py-3 bg-white/5 border-b border-white/10">
           <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-400">Conversations</span>
+            <span className="text-white font-medium">{conversations.length}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm mt-1">
             <span className="text-gray-400">Total messages</span>
             <span className="text-white font-medium">{messages.length}</span>
           </div>
-          <div className="flex items-center justify-between text-sm mt-1">
-            <span className="text-gray-400">Questions asked</span>
-            <span className="text-white font-medium">
-              {messages.filter((m) => m.role === 'user').length}
-            </span>
-          </div>
         </div>
 
-        {/* Message groups */}
+        {/* Conversation groups */}
         <div className="flex-1 overflow-y-auto">
-          {messageGroups.length === 0 ? (
+          {conversationGroups.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-500 p-8">
               <svg className="w-12 h-12 mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -143,7 +175,7 @@ export function ChatHistorySidebar({
               <p className="text-xs text-gray-600 mt-1">Start asking questions!</p>
             </div>
           ) : (
-            messageGroups.map((group) => (
+            conversationGroups.map((group) => (
               <div key={group.date} className="border-b border-white/5 last:border-b-0">
                 <div className="px-4 py-2 bg-white/5 sticky top-0">
                   <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -151,38 +183,52 @@ export function ChatHistorySidebar({
                   </span>
                 </div>
                 <div className="py-1">
-                  {group.messages.map((message) => (
-                    <div
-                      key={message.id}
-                      className="px-4 py-2.5 hover:bg-white/5 transition-colors cursor-pointer group"
-                    >
-                      <div className="flex items-start gap-2">
-                        <div className="w-6 h-6 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                          </svg>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm text-gray-200 line-clamp-2">
-                            {truncateText(message.content, 100)}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-xs text-gray-500">
-                              {new Date(message.timestamp).toLocaleTimeString([], {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </span>
-                            {message.pageContext && (
-                              <span className="text-xs text-emerald-500/70">
-                                Page {message.pageContext}
-                              </span>
-                            )}
+                  {group.conversations.map((conversation) => {
+                    const isActive = conversation.id === currentConversationId;
+                    return (
+                      <button
+                        key={conversation.id}
+                        onClick={() => handleConversationClick(conversation.id)}
+                        className={`w-full px-4 py-2.5 hover:bg-white/5 transition-colors text-left group ${
+                          isActive ? 'bg-emerald-500/10 border-l-2 border-emerald-500' : ''
+                        }`}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                            isActive 
+                              ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' 
+                              : 'bg-gradient-to-br from-primary-500 to-primary-600'
+                          }`}>
+                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
                           </div>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm line-clamp-2 ${isActive ? 'text-emerald-100' : 'text-gray-200'}`}>
+                              {truncateText(conversation.firstMessage, 100)}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs text-gray-500">
+                                {new Date(conversation.timestamp).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </span>
+                              <span className="text-xs text-gray-600">•</span>
+                              <span className="text-xs text-gray-500">
+                                {conversation.messageCount} {conversation.messageCount === 1 ? 'message' : 'messages'}
+                              </span>
+                            </div>
+                          </div>
+                          {isActive && (
+                            <div className="flex-shrink-0">
+                              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    </div>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             ))
@@ -227,4 +273,3 @@ export function ChatHistorySidebar({
     </>
   );
 }
-

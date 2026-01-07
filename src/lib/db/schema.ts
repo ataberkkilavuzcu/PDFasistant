@@ -27,6 +27,7 @@ export interface StoredDocument {
 export interface StoredMessage {
   id: string;
   documentId: string;
+  conversationId: string; // Groups messages into conversations
   role: MessageRole;
   content: string;
   pageContext?: number;
@@ -57,8 +58,9 @@ export const TABLE_NAMES = {
  * Database schema version
  * Version 2: Added pdfBlob and blobSize fields to documents
  * Version 3: Added contentHash for PDF deduplication
+ * Version 4: Added conversationId to messages for conversation sessions
  */
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 
 /**
  * Database name
