@@ -21,6 +21,7 @@ interface ChatHistorySidebarProps {
   onClose: () => void;
   onClearHistory: () => void;
   onLoadConversation?: (conversationId: string) => void;
+  onDeleteConversation?: (conversationId: string) => void;
   currentConversationId?: string | null;
 }
 
@@ -56,9 +57,11 @@ export function ChatHistorySidebar({
   onClose,
   onClearHistory,
   onLoadConversation,
+  onDeleteConversation,
   currentConversationId,
 }: ChatHistorySidebarProps) {
   const [showConfirmClear, setShowConfirmClear] = useState(false);
+  const [deletingConversationId, setDeletingConversationId] = useState<string | null>(null);
 
   // Group messages into conversations
   const conversations = useMemo<Conversation[]>(() => {
@@ -119,6 +122,19 @@ export function ChatHistorySidebar({
     if (onLoadConversation) {
       onLoadConversation(conversationId);
       onClose();
+    }
+  };
+
+  const handleDeleteConversation = async (e: React.MouseEvent, conversationId: string) => {
+    e.stopPropagation(); // Prevent triggering the conversation click
+    
+    if (onDeleteConversation) {
+      setDeletingConversationId(conversationId);
+      try {
+        await onDeleteConversation(conversationId);
+      } finally {
+        setDeletingConversationId(null);
+      }
     }
   };
 
@@ -185,48 +201,73 @@ export function ChatHistorySidebar({
                 <div className="py-1">
                   {group.conversations.map((conversation) => {
                     const isActive = conversation.id === currentConversationId;
+                    const isDeleting = deletingConversationId === conversation.id;
                     return (
-                      <button
+                      <div
                         key={conversation.id}
-                        onClick={() => handleConversationClick(conversation.id)}
-                        className={`w-full px-4 py-2.5 hover:bg-white/5 transition-colors text-left group ${
+                        className={`relative group/item hover:bg-white/5 transition-colors ${
                           isActive ? 'bg-emerald-500/10 border-l-2 border-emerald-500' : ''
                         }`}
                       >
-                        <div className="flex items-start gap-2">
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                            isActive 
-                              ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' 
-                              : 'bg-gradient-to-br from-primary-500 to-primary-600'
-                          }`}>
-                            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        <button
+                          onClick={() => handleConversationClick(conversation.id)}
+                          className="w-full px-4 py-2.5 text-left"
+                          disabled={isDeleting}
+                        >
+                          <div className="flex items-start gap-2">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                              isActive 
+                                ? 'bg-gradient-to-br from-emerald-500 to-emerald-600' 
+                                : 'bg-gradient-to-br from-primary-500 to-primary-600'
+                            }`}>
+                              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                              </svg>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm line-clamp-2 ${isActive ? 'text-emerald-100' : 'text-gray-200'} ${isDeleting ? 'opacity-50' : ''}`}>
+                                {truncateText(conversation.firstMessage, 100)}
+                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className={`text-xs text-gray-500 ${isDeleting ? 'opacity-50' : ''}`}>
+                                  {new Date(conversation.timestamp).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                                <span className="text-xs text-gray-600">•</span>
+                                <span className={`text-xs text-gray-500 ${isDeleting ? 'opacity-50' : ''}`}>
+                                  {conversation.messageCount} {conversation.messageCount === 1 ? 'message' : 'messages'}
+                                </span>
+                              </div>
+                            </div>
+                            {isActive && !isDeleting && (
+                              <div className="flex-shrink-0">
+                                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                              </div>
+                            )}
+                            {isDeleting && (
+                              <div className="flex-shrink-0 flex items-center">
+                                <svg className="w-4 h-4 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                </svg>
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                        {onDeleteConversation && !isDeleting && (
+                          <button
+                            onClick={(e) => handleDeleteConversation(e, conversation.id)}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg opacity-0 group-hover/item:opacity-100 hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-all"
+                            title="Delete conversation"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm line-clamp-2 ${isActive ? 'text-emerald-100' : 'text-gray-200'}`}>
-                              {truncateText(conversation.firstMessage, 100)}
-                            </p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span className="text-xs text-gray-500">
-                                {new Date(conversation.timestamp).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </span>
-                              <span className="text-xs text-gray-600">•</span>
-                              <span className="text-xs text-gray-500">
-                                {conversation.messageCount} {conversation.messageCount === 1 ? 'message' : 'messages'}
-                              </span>
-                            </div>
-                          </div>
-                          {isActive && (
-                            <div className="flex-shrink-0">
-                              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            </div>
-                          )}
-                        </div>
-                      </button>
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

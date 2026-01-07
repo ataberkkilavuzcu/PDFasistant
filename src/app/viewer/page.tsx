@@ -47,6 +47,7 @@ function ViewerContent() {
     loadHistory, 
     loadConversation,
     createNewConversation,
+    deleteConversation,
     editMessage, 
     deleteMessage, 
     clearHistory 
@@ -645,6 +646,7 @@ function ViewerContent() {
         onClose={handleCloseHistory}
         onClearHistory={handleClearHistory}
         onLoadConversation={handleLoadConversation}
+        onDeleteConversation={deleteConversation}
       />
     </div>
   );

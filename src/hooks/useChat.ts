@@ -29,6 +29,7 @@ interface UseChatReturn extends ChatState {
   loadHistory: (documentId: string, conversationId?: string) => Promise<void>;
   loadConversation: (conversationId: string) => Promise<void>;
   createNewConversation: (documentId: string) => string;
+  deleteConversation: (conversationId: string) => Promise<void>;
   clearHistory: (documentId: string) => Promise<void>;
   /** Cancel the current streaming request */
   cancelMessage: () => void;
@@ -354,6 +355,33 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     }));
   }, []);
 
+  const deleteConversation = useCallback(async (conversationId: string) => {
+    try {
+      // Delete all messages with this conversationId
+      await db.messages.where('conversationId').equals(conversationId).delete();
+      
+      // Update allDocumentMessages
+      setAllDocumentMessages((prev) => prev.filter(m => m.conversationId !== conversationId));
+      
+      // If this was the current conversation, clear it
+      if (currentConversationId === conversationId) {
+        setState({ messages: [], isLoading: false, error: null });
+        setCurrentConversationId(null);
+      } else {
+        // Just update the current messages if they contain any from this conversation
+        setState((prev) => ({
+          ...prev,
+          messages: prev.messages.filter(m => m.conversationId !== conversationId),
+        }));
+      }
+    } catch (err) {
+      setState((prev) => ({
+        ...prev,
+        error: err instanceof Error ? err.message : 'Failed to delete conversation',
+      }));
+    }
+  }, [currentConversationId]);
+
   const clearHistory = useCallback(async (documentId: string) => {
     await db.messages.where('documentId').equals(documentId).delete();
     setAllDocumentMessages([]);
@@ -505,6 +533,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     loadHistory,
     loadConversation,
     createNewConversation,
+    deleteConversation,
     clearHistory,
     cancelMessage,
     editMessage,
