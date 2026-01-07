@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useCallback, useMemo, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { PDFViewer, PageNavigator } from '@/components/pdf';
+import { PDFViewer, PageNavigator, TextSelectionTooltip } from '@/components/pdf';
 import { ChatPanel, ChatHistorySidebar } from '@/components/chat';
 import { SearchBar } from '@/components/search';
 import { PDFErrorBoundary, ChatErrorBoundary } from '@/components/error-boundaries';
@@ -25,6 +25,11 @@ import { useDocumentStore } from '@/stores/documentStore';
 import { searchPages } from '@/lib/search/keyword';
 import { rankSearchResults } from '@/lib/api/search-client';
 import type { SearchResult } from '@/lib/search/keyword';
+
+// Minimum chat panel width in pixels
+const MIN_CHAT_WIDTH = 300;
+const MAX_CHAT_WIDTH = 600;
+const DEFAULT_CHAT_WIDTH = 400;
 
 function ViewerContent() {
   const router = useRouter();
@@ -42,7 +47,15 @@ function ViewerContent() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [referencedPages, setReferencedPages] = useState<number[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [selectedTextForChat, setSelectedTextForChat] = useState<string>('');
+  const [chatPanelWidth, setChatPanelWidth] = useState(DEFAULT_CHAT_WIDTH);
+  const [isResizing, setIsResizing] = useState(false);
+  const [isMobileView, setIsMobileView] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(true);
   const blobUrlRef = useRef<string | null>(null);
+  const pdfContainerRef = useRef<HTMLDivElement>(null);
+  const resizeStartX = useRef(0);
+  const resizeStartWidth = useRef(DEFAULT_CHAT_WIDTH);
   
   // Session-based search cache (cleared on page refresh)
   const searchCacheRef = useRef<Map<string, SearchResult[]>>(new Map());
@@ -182,6 +195,114 @@ function ViewerContent() {
       setIsHistoryOpen(false);
     }
   }, [documentId, clearHistory]);
+
+  // New chat handler - clears messages and starts fresh
+  const handleNewChat = useCallback(async () => {
+    if (documentId) {
+      await clearHistory(documentId);
+    }
+  }, [documentId, clearHistory]);
+
+  // Handle text selected from PDF to add to chat
+  const handleAddTextToChat = useCallback((text: string) => {
+    // Format the text with quotes to indicate it's a quote from the document
+    const formattedText = `Regarding this text: "${text.trim()}"\n\n`;
+    setSelectedTextForChat(formattedText);
+  }, []);
+
+  const handleClearSelectedText = useCallback(() => {
+    setSelectedTextForChat('');
+  }, []);
+
+  // Responsive design - detect mobile view
+  useEffect(() => {
+    const checkMobileView = () => {
+      setIsMobileView(window.innerWidth < 768);
+      if (window.innerWidth < 768) {
+        setIsChatOpen(false);
+      }
+    };
+    
+    checkMobileView();
+    window.addEventListener('resize', checkMobileView);
+    return () => window.removeEventListener('resize', checkMobileView);
+  }, []);
+
+  // Split-pane resizing handlers
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = chatPanelWidth;
+  }, [chatPanelWidth]);
+
+  useEffect(() => {
+    if (!isResizing || typeof window === 'undefined') return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = resizeStartX.current - e.clientX;
+      const newWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, resizeStartWidth.current + delta));
+      setChatPanelWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+    };
+
+    window.document.addEventListener('mousemove', handleMouseMove);
+    window.document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.document.removeEventListener('mousemove', handleMouseMove);
+      window.document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in inputs
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) {
+        return;
+      }
+
+      switch (e.key) {
+        case 'ArrowLeft':
+          if (currentPage > 1) {
+            handlePageChange(currentPage - 1);
+          }
+          break;
+        case 'ArrowRight':
+          if (currentPage < totalPages) {
+            handlePageChange(currentPage + 1);
+          }
+          break;
+        case ' ': // Spacebar
+          e.preventDefault();
+          if (e.shiftKey) {
+            // Shift+Space = previous page
+            if (currentPage > 1) {
+              handlePageChange(currentPage - 1);
+            }
+          } else {
+            // Space = next page
+            if (currentPage < totalPages) {
+              handlePageChange(currentPage + 1);
+            }
+          }
+          break;
+        case 'Home':
+          handlePageChange(1);
+          break;
+        case 'End':
+          handlePageChange(totalPages);
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentPage, totalPages, handlePageChange]);
 
   const handleSearch = useCallback(
     async (query: string) => {
@@ -371,7 +492,7 @@ function ViewerContent() {
         </div>
 
         {/* PDF Viewer Container */}
-        <div className="flex-1 overflow-hidden relative bg-[#0a0a0b]">
+        <div ref={pdfContainerRef} className="flex-1 overflow-hidden relative bg-[#0a0a0b]">
           {isPDFLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
@@ -395,6 +516,11 @@ function ViewerContent() {
                 searchQuery={searchQuery}
                 highlightedPages={referencedPages}
               />
+              {/* Text Selection Tooltip */}
+              <TextSelectionTooltip
+                containerRef={pdfContainerRef}
+                onAddToChat={handleAddTextToChat}
+              />
             </PDFErrorBoundary>
           ) : (
             <div className="flex items-center justify-center h-full text-gray-400">
@@ -408,6 +534,22 @@ function ViewerContent() {
                 <p className="text-sm text-gray-500" style={{ fontFamily: 'Plus Jakarta Sans, sans-serif' }}>Please wait while we prepare your document</p>
               </div>
             </div>
+          )}
+
+          {/* Mobile Chat Toggle Button */}
+          {isMobileView && (
+            <button
+              onClick={() => setIsChatOpen(!isChatOpen)}
+              className="fixed bottom-20 right-4 z-40 p-4 rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 transition-all duration-300"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {isChatOpen ? (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                ) : (
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                )}
+              </svg>
+            </button>
           )}
         </div>
 
@@ -432,8 +574,26 @@ function ViewerContent() {
         )}
       </div>
 
-      {/* Right side - Chat Panel */}
-      <div className="w-[400px] flex-shrink-0 border-l border-white/5 bg-gradient-to-b from-[#0f1419]/50 to-[#0a0a0b]/30 backdrop-blur-sm flex flex-col">
+      {/* Right side - Chat Panel with resizable width */}
+      <div
+        className={`
+          flex-shrink-0 border-l border-white/5 bg-gradient-to-b from-[#0f1419]/50 to-[#0a0a0b]/30 backdrop-blur-sm flex flex-col
+          transition-all duration-300 ease-out
+          ${isMobileView ? 'fixed inset-y-0 right-0 z-50' : 'relative'}
+          ${isMobileView && !isChatOpen ? 'translate-x-full' : 'translate-x-0'}
+        `}
+        style={{ width: isMobileView ? '100%' : `${chatPanelWidth}px`, maxWidth: isMobileView ? '100%' : MAX_CHAT_WIDTH }}
+      >
+        {/* Resize Handle */}
+        {!isMobileView && (
+          <div
+            onMouseDown={handleResizeStart}
+            className={`absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/50 transition-colors group ${isResizing ? 'bg-emerald-500/50' : 'bg-transparent'}`}
+          >
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-1 h-8 rounded-full bg-white/10 group-hover:bg-emerald-500/50 transition-colors opacity-0 group-hover:opacity-100" />
+          </div>
+        )}
+
         <ChatErrorBoundary>
           <ChatPanel
             messages={messages}
@@ -444,9 +604,20 @@ function ViewerContent() {
             onEditMessage={handleEditMessage}
             onDeleteMessage={handleDeleteMessage}
             onOpenHistory={handleOpenHistory}
+            onNewChat={handleNewChat}
+            selectedText={selectedTextForChat}
+            onClearSelectedText={handleClearSelectedText}
           />
         </ChatErrorBoundary>
       </div>
+
+      {/* Mobile overlay backdrop */}
+      {isMobileView && isChatOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setIsChatOpen(false)}
+        />
+      )}
 
       {/* Chat History Sidebar */}
       <ChatHistorySidebar
@@ -455,6 +626,20 @@ function ViewerContent() {
         onClose={handleCloseHistory}
         onClearHistory={handleClearHistory}
       />
+
+      {/* Keyboard shortcuts hint - shown on larger screens */}
+      {!isMobileView && totalPages > 0 && (
+        <div className="fixed bottom-4 right-4 z-30 opacity-0 hover:opacity-100 transition-opacity duration-300">
+          <div className="bg-[#0f1419]/90 backdrop-blur-sm rounded-lg p-3 border border-white/10 text-xs text-gray-400">
+            <div className="font-medium text-gray-300 mb-2">Keyboard Shortcuts</div>
+            <div className="space-y-1">
+              <div><kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">←</kbd> <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">→</kbd> Navigate pages</div>
+              <div><kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">Space</kbd> Next page</div>
+              <div><kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">Home</kbd> <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">End</kbd> First/Last</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
