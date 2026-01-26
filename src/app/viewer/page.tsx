@@ -462,7 +462,7 @@ function ViewerContent() {
       {/* Left side - PDF Viewer */}
       <div className="flex-1 flex flex-col min-w-0 relative">
         {/* Top Bar */}
-        <div className="h-16 bg-gradient-to-r from-[#0f1419] to-[#0a0a0b] backdrop-blur-xl border-b border-white/5 flex items-center px-4 z-20 gap-4">
+        <div className="h-16 bg-gradient-to-r from-[#0f1419] to-[#0a0a0b] backdrop-blur-xl border-b border-white/5 flex items-center px-4 z-50 gap-4 relative">
           {/* Back button */}
           <button
             onClick={() => router.push('/')}

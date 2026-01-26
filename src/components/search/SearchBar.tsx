@@ -258,7 +258,7 @@ export function SearchBar({
 
       {/* Search history dropdown */}
       {showHistory && searchHistory.length > 0 && !isOpen && (
-        <div className="absolute z-50 w-full mt-3 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl max-h-64 overflow-y-auto custom-scrollbar animate-fade-in premium-shadow-lg">
+        <div className="absolute z-[60] w-full mt-3 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl max-h-64 overflow-y-auto custom-scrollbar animate-fade-in premium-shadow-lg">
           <div className="sticky top-0 p-3 bg-[#1a1a1a]/95 backdrop-blur-xl border-b border-white/10 flex justify-between items-center z-10">
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider flex items-center gap-2">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -294,7 +294,7 @@ export function SearchBar({
 
       {/* Results dropdown with pagination */}
       {isOpen && results.length > 0 && (
-        <div className="absolute z-50 w-full mt-3 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl max-h-96 overflow-y-auto custom-scrollbar animate-fade-in premium-shadow-lg">
+        <div className="absolute z-[60] w-full mt-3 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl max-h-96 overflow-y-auto custom-scrollbar animate-fade-in premium-shadow-lg">
           <div className="sticky top-0 p-3 bg-[#1a1a1a]/95 backdrop-blur-xl border-b border-white/10 flex justify-between items-center z-10">
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-primary-400 uppercase tracking-wider">
@@ -374,7 +374,7 @@ export function SearchBar({
       )}
 
       {isOpen && results.length === 0 && !isSearching && query.trim() && (
-        <div className="absolute z-50 w-full mt-3 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl p-6 text-center animate-fade-in">
+        <div className="absolute z-[60] w-full mt-3 bg-[#1a1a1a]/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl p-6 text-center animate-fade-in">
           <div className="w-12 h-12 bg-gradient-to-br from-primary-500/20 to-accent-500/10 rounded-full flex items-center justify-center mx-auto mb-3 ring-1 ring-primary-500/20">
              <svg className="w-6 h-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

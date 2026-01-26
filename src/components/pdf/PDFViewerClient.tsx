@@ -942,7 +942,7 @@ function PDFViewerImpl({
     <div className="flex flex-col h-full bg-neutral-950">
       {/* Zoom Controls */}
       <div
-        className="flex items-center justify-center gap-2 py-2 px-4 border-b border-neutral-800 relative z-50"
+        className="flex items-center justify-center gap-2 py-2 px-4 border-b border-neutral-800 relative z-10"
         style={{
           backgroundColor: 'rgba(23, 23, 26, 0.8)',
           // Fallback for browsers without backdrop-blur support
