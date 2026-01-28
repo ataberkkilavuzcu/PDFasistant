@@ -882,30 +882,112 @@ function PDFViewerImpl({
     return zoom;
   }, [zoom, zoomMode]);
 
-  // Memoize page elements array - but NOT the individual page components
-  // The PageContainer will handle its own re-rendering via React.memo
-  // Include zoom and zoomMode in dependencies to ensure re-render when zoom changes
+  // ============================================================
+  // LAZY LOADING CONFIGURATION
+  // ============================================================
+  // Buffer size: number of pages to render before and after current page
+  // Higher = smoother scrolling but more memory usage
+  // Lower = less memory but may see placeholders when scrolling fast
+  // Set to 5 to account for scroll detection debounce timing
+  const BUFFER_SIZE = 5;
+
+  // Calculate the range of pages that should be rendered based on current page
+  const getVisiblePageRange = useCallback(() => {
+    if (numPages === 0) return { start: 0, end: 0 };
+
+    const start = Math.max(1, currentPage - BUFFER_SIZE);
+    const end = Math.min(numPages, currentPage + BUFFER_SIZE);
+
+    return { start, end };
+  }, [currentPage, numPages]);
+
+  // ============================================================
+  // PAGE CACHING (LRU Cache)
+  // ============================================================
+  // Cache rendered page elements to avoid re-renders when scrolling back
+  // This provides instant display when returning to previously viewed pages
+
+  interface CacheEntry {
+    element: React.ReactNode;
+    timestamp: number;
+  }
+
+  // Store cache entries by page number
+  const pageCache = useRef<Map<number, CacheEntry>>(new Map());
+
+  // Maximum number of pages to cache
+  const MAX_CACHE_SIZE = 10;
+
+  // Get a page from cache, or null if not cached
+  const getCachedPage = useCallback((pageNum: number): React.ReactNode | null => {
+    const entry = pageCache.current.get(pageNum);
+    if (entry) {
+      // Update timestamp on access (LRU behavior)
+      entry.timestamp = Date.now();
+      console.log(`[PageCache] Cache hit for page ${pageNum}`);
+      return entry.element;
+    }
+    console.log(`[PageCache] Cache miss for page ${pageNum}`);
+    return null;
+  }, []);
+
+  // Add a page to cache with eviction if necessary
+  const cachePage = useCallback((pageNum: number, element: React.ReactNode) => {
+    // Evict oldest entry if cache is full
+    if (pageCache.current.size >= MAX_CACHE_SIZE && !pageCache.current.has(pageNum)) {
+      let oldestPage = pageNum;
+      let oldestTime = Date.now();
+
+      pageCache.current.forEach((entry, cachedPageNum) => {
+        if (entry.timestamp < oldestTime) {
+          oldestTime = entry.timestamp;
+          oldestPage = cachedPageNum;
+        }
+      });
+
+      pageCache.current.delete(oldestPage);
+      console.log(`[PageCache] Evicted page ${oldestPage} from cache (LRU)`);
+    }
+
+    pageCache.current.set(pageNum, {
+      element,
+      timestamp: Date.now(),
+    });
+    console.log(`[PageCache] Cached page ${pageNum} (cache size: ${pageCache.current.size}/${MAX_CACHE_SIZE})`);
+  }, [MAX_CACHE_SIZE]);
+
+  // Clear cache when file changes to avoid stale data
+  useEffect(() => {
+    pageCache.current.clear();
+    console.log('[PageCache] Cache cleared (file changed)');
+  }, [file]);
+
+  // Memoize page elements array with lazy loading optimization
+  // Only render pages within the visible range (currentPage ± BUFFER_SIZE)
+  // Pages outside this range get lightweight placeholders
+  // Uses LRU cache to avoid re-rendering previously viewed pages
   const pageElements = useMemo(() => {
-    console.log('[PageElements] Recomputing page elements, zoom:', zoom, 'zoomMode:', zoomMode, 'highlightedPages:', highlightedPages);
+    console.log('[PageElements] Recomputing page elements with lazy loading and caching, zoom:', zoom, 'zoomMode:', zoomMode, 'highlightedPages:', highlightedPages);
+
+    const { start: renderStart, end: renderEnd } = getVisiblePageRange();
+    console.log(`[LazyLoading] Rendering pages ${renderStart}-${renderEnd} of ${numPages} (current: ${currentPage}, buffer: ${BUFFER_SIZE})`);
+
     return Array.from({ length: numPages }, (_, index) => {
       const pageNum = index + 1;
       const isCurrent = currentPage === pageNum;
       const isHighlighted = highlightedPages.includes(pageNum);
-      const pageScale = getPageScale();
-      const pageWidth = getPageWidth();
+      const shouldRender = pageNum >= renderStart && pageNum <= renderEnd;
 
-      return (
-        <PageContainer
-          key={`page-${pageNum}-zoom-${zoom}-mode-${zoomMode}`}
-          pageNum={pageNum}
-          isCurrent={isCurrent}
-          isHighlighted={isHighlighted}
-          setPageRef={setPageRef}
-        >
+      // Check cache first for pages that should be rendered
+      const cachedPage = shouldRender ? getCachedPage(pageNum) : null;
+
+      // Create the rendered page element
+      const createPageElement = (): React.ReactNode => (
+        <>
           <Page
             pageNumber={pageNum}
-            scale={pageScale}
-            width={pageWidth}
+            scale={getPageScale()}
+            width={getPageWidth()}
             renderTextLayer={true}
             renderAnnotationLayer={true}
             onLoadSuccess={handlePageLoadSuccess}
@@ -920,10 +1002,49 @@ function PDFViewerImpl({
           <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/60 rounded text-xs text-white/70">
             {pageNum}
           </div>
+        </>
+      );
+
+      // If we have a cached version and should render, use it
+      // Otherwise, create the element and cache it
+      const pageContent = cachedPage || createPageElement();
+
+      // Cache the newly created element for future use
+      if (shouldRender && !cachedPage) {
+        cachePage(pageNum, pageContent);
+      }
+
+      return (
+        <PageContainer
+          key={`page-${pageNum}-zoom-${zoom}-mode-${zoomMode}`}
+          pageNum={pageNum}
+          isCurrent={isCurrent}
+          isHighlighted={isHighlighted}
+          setPageRef={setPageRef}
+        >
+          {shouldRender ? (
+            pageContent
+          ) : (
+            // Lightweight placeholder for off-screen pages
+            <div
+              className="bg-neutral-900 flex items-center justify-center min-h-[400px] min-w-[300px] border border-neutral-800"
+              style={{ aspectRatio: '0.707' }} // A4 ratio
+            >
+              <div className="text-center">
+                <div className="w-12 h-12 mx-auto mb-3 rounded-lg bg-neutral-800 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-neutral-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <p className="text-sm text-neutral-600 font-medium">Page {pageNum}</p>
+                <p className="text-xs text-neutral-700 mt-1">Scroll to load</p>
+              </div>
+            </div>
+          )}
         </PageContainer>
       );
     });
-  }, [numPages, currentPage, zoom, zoomMode, highlightedPages, getPageScale, getPageWidth, setPageRef, handlePageLoadSuccess, Page]);
+  }, [numPages, currentPage, zoom, zoomMode, highlightedPages, getPageScale, getPageWidth, setPageRef, handlePageLoadSuccess, Page, getVisiblePageRange, getCachedPage, cachePage]);
 
   if (!file) {
     return (

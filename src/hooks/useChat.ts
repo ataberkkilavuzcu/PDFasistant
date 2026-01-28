@@ -3,6 +3,7 @@
 /**
  * Custom hook for chat state and history management
  * Supports streaming responses with automatic retry logic
+ * Phase 7.2: Added pagination and cleanup support
  */
 
 import { useState, useCallback, useRef } from 'react';
@@ -10,13 +11,14 @@ import type { ChatMessage, ChatState } from '@/types/chat';
 import type { ChatRequest } from '@/types/api';
 import { db } from '@/lib/db';
 import { sendChatMessageStream } from '@/lib/api/chat-client';
+import { cleanupOldConversations } from '@/lib/db/cleanup';
 
 interface UseChatOptions {
   /** Maximum number of retry attempts (default: 3) */
   maxRetries?: number;
 }
 
-interface UseChatReturn extends ChatState {
+export interface UseChatReturn extends ChatState {
   currentConversationId: string | null;
   /** All messages for the current document (for history sidebar) */
   allDocumentMessages: ChatMessage[];
@@ -52,6 +54,11 @@ interface UseChatReturn extends ChatState {
   exportConversation: () => string;
   /** Get all conversations for a document */
   getConversations: (documentId: string) => Promise<Array<{ id: string; firstMessage: string; timestamp: Date; messageCount: number }>>;
+  // Phase 7.2: Pagination and cleanup methods
+  /** Load messages in paginated chunks for better performance */
+  loadMessagesPaginated: (documentId: string, conversationId: string, page: number, pageSize?: number) => Promise<{ messages: ChatMessage[]; totalMessages: number; hasMore: boolean }>;
+  /** Cleanup old conversations to free up storage space */
+  cleanupOldConversations: (daysOld: number) => Promise<{ deletedCount: number; freedSpace: string }>;
 }
 
 /**
@@ -66,6 +73,42 @@ function generateMessageId(): string {
  */
 function generateConversationId(documentId: string): string {
   return `${documentId}-conv-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+}
+
+/**
+ * Estimate token count for text
+ * Rough estimate: ~4 characters per token
+ */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
+/**
+ * Smart history truncation based on token count
+ * Starts from most recent messages and works backwards
+ * Stops when adding another message would exceed maxTokens
+ */
+function truncateHistoryByTokens(
+  messages: ChatMessage[],
+  maxTokens = 4000 // Leave room for prompt + response
+): Array<{ role: 'user' | 'assistant'; content: string }> {
+  const result: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  let tokenCount = 0;
+
+  // Start from most recent, work backwards
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    const msgTokens = estimateTokens(msg.content);
+
+    if (tokenCount + msgTokens > maxTokens) {
+      break;
+    }
+
+    result.unshift({ role: msg.role, content: msg.content });
+    tokenCount += msgTokens;
+  }
+
+  return result;
 }
 
 /**
@@ -239,11 +282,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       }));
 
       try {
-        // Prepare conversation history for API (exclude current message)
-        const conversationHistory = state.messages.slice(-10).map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-        }));
+        // Prepare conversation history for API using smart token-based truncation
+        const conversationHistory = truncateHistoryByTokens(state.messages, 4000);
 
         const request: ChatRequest = {
           message,
@@ -525,6 +565,63 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     }
   }, []);
 
+  /**
+   * Phase 7.2: Load messages in paginated chunks
+   * Useful for large conversations to improve initial load performance
+   */
+  const loadMessagesPaginated = useCallback(async (
+    documentId: string,
+    conversationId: string,
+    page: number,
+    pageSize = 50
+  ) => {
+    try {
+      // Get total count first
+      const allMessages = await db.messages
+        .where('conversationId')
+        .equals(conversationId)
+        .toArray();
+
+      const totalMessages = allMessages.length;
+      const startIndex = page * pageSize;
+      const endIndex = startIndex + pageSize;
+
+      // Get paginated messages
+      const messages = allMessages
+        .slice(startIndex, endIndex)
+        .map(msg => msg as ChatMessage);
+
+      return {
+        messages,
+        totalMessages,
+        hasMore: endIndex < totalMessages,
+      };
+    } catch (err) {
+      console.error('Failed to load paginated messages:', err);
+      return {
+        messages: [],
+        totalMessages: 0,
+        hasMore: false,
+      };
+    }
+  }, []);
+
+  /**
+   * Phase 7.2: Cleanup old conversations to free up storage space
+   */
+  const cleanupOldConversationsCallback = useCallback(async (daysOld: number) => {
+    try {
+      const result = await cleanupOldConversations(daysOld);
+      return {
+        deletedCount: result.deletedMessages,
+        freedSpace: result.freedSpaceFormatted,
+      };
+    } catch (err) {
+      console.error('Failed to cleanup old conversations:', err);
+      throw err;
+    }
+  }, []);
+
   return {
     ...state,
     currentConversationId,
@@ -543,6 +640,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     getMessageCount,
     exportConversation,
     getConversations,
+    // Phase 7.2: Pagination and cleanup methods
+    loadMessagesPaginated,
+    cleanupOldConversations: cleanupOldConversationsCallback,
   };
 }
 

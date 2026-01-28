@@ -19,7 +19,7 @@ import { PDFUploader } from '@/components/pdf';
 import { DocumentList } from '@/components/documents';
 import { usePDF } from '@/hooks';
 import { useDocumentStore } from '@/stores/documentStore';
-import { extractAllPages, type ExtractionProgress, type PDFDocumentProxy } from '@/lib/pdf/extractor';
+import { extractPagesStream, type ExtractionProgress, type PDFDocumentProxy } from '@/lib/pdf/extractor';
 import { initializePDFJS, getPDFJS } from '@/lib/pdf/init';
 
 interface ProcessingState {
@@ -29,7 +29,7 @@ interface ProcessingState {
 
 export default function Home() {
   const router = useRouter();
-  const { saveDocument } = usePDF();
+  const { saveDocumentStreaming } = usePDF();
   const {
     recentDocuments,
     lastOpenedDocumentId,
@@ -186,7 +186,23 @@ export default function Home() {
           },
         });
 
-        const pages = await extractAllPages(
+        // ============================================================
+        // STREAMING EXTRACTION
+        // ============================================================
+        // Extract pages one at a time and save incrementally to IndexedDB
+        // This gives users faster initial feedback and smoother progress updates
+        const metadata = {
+          title: file.name.replace('.pdf', ''),
+          pageCount: pdfDoc.numPages,
+          uploadDate: new Date(),
+          fileSize: file.size,
+        };
+
+        let documentId: string | null = null;
+        const pages: import('@/types/pdf').PDFPage[] = [];
+
+        // Use streaming extraction for incremental saves
+        for await (const page of extractPagesStream(
           pdfDoc as unknown as PDFDocumentProxy,
           (progress) => {
             setProcessingState({
@@ -194,7 +210,20 @@ export default function Home() {
               progress,
             });
           }
-        );
+        )) {
+          pages.push(page);
+
+          // Save every 5 pages (or on first page, or on last page)
+          // This balances frequent updates with too many DB writes
+          if (pages.length === 1 || pages.length % 5 === 0 || pages.length === pdfDoc.numPages) {
+            documentId = await saveDocumentStreaming(
+              metadata,
+              pages,
+              file,
+              documentId || undefined
+            );
+          }
+        }
 
         setProcessingState({
           isProcessing: true,
@@ -203,22 +232,16 @@ export default function Home() {
             totalPages: pdfDoc.numPages,
             percentage: 100,
             phase: 'complete',
-            message: 'Saving to local storage...',
+            message: 'Document ready!',
           },
         });
 
-        const documentId = await saveDocument(
-          {
-            title: file.name.replace('.pdf', ''),
-            pageCount: pdfDoc.numPages,
-            uploadDate: new Date(),
-            fileSize: file.size,
-          },
-          pages,
-          file
-        );
-
-        router.push(`/viewer?id=${documentId}`);
+        // Navigate to viewer
+        if (documentId) {
+          router.push(`/viewer?id=${documentId}`);
+        } else {
+          throw new Error('Failed to save document');
+        }
       } catch (err) {
         console.error('Error processing PDF:', err);
 
@@ -254,7 +277,7 @@ export default function Home() {
         setProcessingState({ isProcessing: false, progress: null });
       }
     },
-    [saveDocument, router]
+    [saveDocumentStreaming, router]
   );
 
   const { isProcessing, progress } = processingState;

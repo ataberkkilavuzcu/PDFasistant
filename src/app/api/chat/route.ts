@@ -1,6 +1,7 @@
 /**
  * Chat API Route - Page-aware conversational queries
  * Supports both streaming and non-streaming responses
+ * Phase 7.3: Added server-side rate limiting
  */
 
 import { NextRequest } from 'next/server';
@@ -11,10 +12,71 @@ import { streamResponse, jsonResponse } from '@/lib/api/streaming';
 
 export const runtime = 'nodejs';
 
+// Server-side rate limiting (MVP - in-memory)
+const rateLimitMap = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const MAX_REQUESTS = 10;
+
+class RateLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RateLimitError';
+  }
+}
+
+async function checkRateLimit(clientId: string): Promise<void> {
+  const now = Date.now();
+
+  // Get existing requests
+  let requests = rateLimitMap.get(clientId) || [];
+
+  // Remove old requests
+  requests = requests.filter((timestamp) => now - timestamp < RATE_LIMIT_WINDOW);
+
+  // Check limit
+  if (requests.length >= MAX_REQUESTS) {
+    throw new RateLimitError('Rate limit exceeded');
+  }
+
+  // Add current request
+  requests.push(now);
+  rateLimitMap.set(clientId, requests);
+
+  // Cleanup old entries periodically (every 1000 entries)
+  if (rateLimitMap.size > 1000) {
+    for (const [key, timestamps] of Array.from(rateLimitMap.entries())) {
+      const recent = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW);
+      if (recent.length === 0) {
+        rateLimitMap.delete(key);
+      } else {
+        rateLimitMap.set(key, recent);
+      }
+    }
+  }
+}
+
 export async function POST(request: NextRequest) {
   const requestId = crypto.randomUUID?.() ?? `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
   try {
+    // Rate limiting check
+    const clientId = request.headers.get('x-client-id') || 'anonymous';
+    try {
+      await checkRateLimit(clientId);
+    } catch (error) {
+      if (error instanceof RateLimitError) {
+        return jsonResponse<ApiError>(
+          {
+            error: 'Too Many Requests',
+            message: 'Rate limit exceeded. Please try again later.',
+            statusCode: 429,
+          },
+          { status: 429 }
+        );
+      }
+      throw error;
+    }
+
     const body: ChatRequest = await request.json();
     const { message, pageContext, conversationHistory, stream = false } = body;
 

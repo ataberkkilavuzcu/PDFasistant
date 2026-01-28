@@ -8,6 +8,8 @@ import type {
   ChatStreamEvent,
   ApiError,
 } from '@/types/api';
+import { chatRateLimiter } from '@/lib/api/rate-limiter';
+import { getClientId } from '@/lib/client-id';
 
 /**
  * Configuration for retry logic
@@ -59,7 +61,10 @@ export async function sendChatMessage(
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': getClientId(),
+        },
         body: JSON.stringify({ ...request, stream: false }),
       });
 
@@ -100,91 +105,102 @@ export async function* sendChatMessageStream(
   retryConfig: RetryConfig = {},
   signal?: AbortSignal
 ): AsyncGenerator<ChatStreamEvent> {
+  // Acquire rate limit
+  await chatRateLimiter.acquire();
+
   const config = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
   let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...request, stream: true }),
-        signal,
-      });
+  try {
+    for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-client-id': getClientId(),
+          },
+          body: JSON.stringify({ ...request, stream: true }),
+          signal,
+        });
 
-      if (!response.ok) {
-        const errorData: ApiError = await response.json().catch(() => ({
-          error: 'Unknown Error',
-          message: `HTTP ${response.status}`,
-          statusCode: response.status,
-        }));
-        throw new Error(errorData.message || 'Failed to get response');
-      }
+        if (!response.ok) {
+          const errorData: ApiError = await response.json().catch(() => ({
+            error: 'Unknown Error',
+            message: `HTTP ${response.status}`,
+            statusCode: response.status,
+          }));
+          throw new Error(errorData.message || 'Failed to get response');
+        }
 
-      if (!response.body) {
-        throw new Error('Response body is null');
-      }
+        if (!response.body) {
+          throw new Error('Response body is null');
+        }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
+        while (true) {
+          const { done, value } = await reader.read();
 
-        if (done) break;
+          if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+          buffer += decoder.decode(value, { stream: true });
 
-        // Process complete SSE messages
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop() || '';
+          // Process complete SSE messages
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              yield data;
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                yield data;
 
-              // If we get a done or error event, we're done
-              if (data.type === 'done' || data.type === 'error') {
-                return;
+                // If we get a done or error event, we're done
+                if (data.type === 'done' || data.type === 'error') {
+                  return;
+                }
+              } catch {
+                // Skip invalid JSON
               }
-            } catch {
-              // Skip invalid JSON
             }
           }
         }
-      }
 
-      return;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-
-      // Handle abort error - don't yield error, just stop
-      if (lastError.name === 'AbortError') {
         return;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Handle abort error - don't yield error, just stop
+        if (lastError.name === 'AbortError') {
+          return;
+        }
+
+        // Don't retry if it's the last attempt or error is not retryable
+        if (attempt >= config.maxRetries || !isRetryableError(lastError)) {
+          yield {
+            type: 'error',
+            error: lastError.message,
+          };
+          return;
+        }
+
+        // Call retry callback
+        config.onRetry(attempt + 1, lastError);
+
+        // Wait before retrying with exponential backoff
+        await sleep(config.retryDelay * Math.pow(2, attempt));
       }
-
-      // Don't retry if it's the last attempt or error is not retryable
-      if (attempt >= config.maxRetries || !isRetryableError(lastError)) {
-        yield {
-          type: 'error',
-          error: lastError.message,
-        };
-        return;
-      }
-
-      // Call retry callback
-      config.onRetry(attempt + 1, lastError);
-
-      // Wait before retrying with exponential backoff
-      await sleep(config.retryDelay * Math.pow(2, attempt));
     }
-  }
 
-  yield {
-    type: 'error',
-    error: lastError?.message || 'Failed to send message',
-  };
+    yield {
+      type: 'error',
+      error: lastError?.message || 'Failed to send message',
+    };
+  } finally {
+    // Always release the rate limit
+    chatRateLimiter.release();
+  }
 }

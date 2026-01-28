@@ -21,10 +21,12 @@ import { ChatPanel, ChatHistorySidebar } from '@/components/chat';
 import { SearchBar } from '@/components/search';
 import { PDFErrorBoundary, ChatErrorBoundary } from '@/components/error-boundaries';
 import { usePDF, useChat, usePageContext } from '@/hooks';
+import { useDebouncedChat } from '@/hooks/useDebouncedChat';
 import { useDocumentStore } from '@/stores/documentStore';
 import { searchPages } from '@/lib/search/keyword';
 import { rankSearchResults } from '@/lib/api/search-client';
 import type { SearchResult } from '@/lib/search/keyword';
+import type { ChatMessage } from '@/types/chat';
 
 // Minimum chat panel width in pixels
 const MIN_CHAT_WIDTH = 300;
@@ -37,21 +39,22 @@ function ViewerContent() {
   const documentId = searchParams.get('id');
 
   const { document, loadDocument, isLoading: isPDFLoading, getPDFBlob } = usePDF();
-  const { 
-    messages, 
+  const chat = useChat();
+  const {
+    messages,
     allDocumentMessages,
     currentConversationId,
-    isLoading: isChatLoading, 
-    error: chatError, 
-    sendMessage, 
-    loadHistory, 
+    isLoading: isChatLoading,
+    error: chatError,
+    sendMessage,
+    loadHistory,
     loadConversation,
     createNewConversation,
     deleteConversation,
-    editMessage, 
-    deleteMessage, 
-    clearHistory 
-  } = useChat();
+    editMessage,
+    deleteMessage,
+    clearHistory
+  } = useDebouncedChat(chat, { delay: 800 });
   const { setLastOpenedDocument, setCurrentPage: setStoreCurrentPage } = useDocumentStore();
 
   const [pdfFileUrl, setPdfFileUrl] = useState<string | null>(null);
@@ -162,7 +165,7 @@ function ViewerContent() {
 
   // Extract referenced pages from the latest assistant message
   useEffect(() => {
-    const lastAssistant = messages.filter(m => m.role === 'assistant').pop();
+    const lastAssistant = messages.filter((m: ChatMessage) => m.role === 'assistant').pop();
     setReferencedPages(lastAssistant?.pageReferences || []);
   }, [messages]);
 

@@ -4,17 +4,14 @@
 
 /**
  * System prompt for page-aware chat
+ * Optimized for token efficiency (~50 tokens vs ~100)
  */
-export const PAGE_AWARE_CHAT_PROMPT = `You are a helpful AI assistant helping a user read and understand a PDF document.
-
-IMPORTANT RULES:
-1. Answer questions using ONLY the provided page content.
-2. Always cite page numbers explicitly when referencing information (e.g., "On page 5...").
-3. If the answer cannot be found in the provided context, say so clearly.
-4. Keep responses concise and focused on the user's question.
-5. Use clear formatting with bullet points or numbered lists when appropriate.
-
-The user is currently reading the document, and you have access to the pages around their current position.`;
+export const PAGE_AWARE_CHAT_PROMPT = `You help users understand PDFs using ONLY provided context.
+RULES:
+1. Cite page numbers: "On page 5..."
+2. Say "not found in context" if answer unavailable
+3. Be concise
+4. Use bullet/numbered lists for clarity`;
 
 /**
  * System prompt for search ranking
@@ -29,19 +26,24 @@ IMPORTANT RULES:
 
 /**
  * Format user message with context
+ * Optimized for token efficiency
  */
 export function formatUserMessage(
   userQuery: string,
   pageContext: string,
   currentPage: number
 ): string {
-  return `The user is currently on page ${currentPage}.
+  // Truncate page context if too long (>2000 chars ~500 tokens)
+  const maxContextLength = 2000;
+  const truncatedContext =
+    pageContext.length > maxContextLength
+      ? pageContext.substring(0, maxContextLength) + '...'
+      : pageContext;
 
-DOCUMENT CONTEXT:
-${pageContext}
+  return `Page ${currentPage}
+${truncatedContext}
 
-USER QUESTION:
-${userQuery}`;
+Q: ${userQuery}`;
 }
 
 /**
