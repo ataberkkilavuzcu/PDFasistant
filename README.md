@@ -41,12 +41,21 @@ pnpm install
 cp .env.example .env.local
 ```
 
-4. Add your Gemini API key to `.env.local`:
+4. Add your API keys to `.env.local`:
 ```
-GEMINI_API_KEY=your_api_key_here
+# Primary provider (required)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Fallback provider (optional, required for fallback mode)
+GLM_API_KEY=your_glm_api_key_here
+
+# Provider selection: 'gemini', 'glm', or 'fallback' (default)
+AI_PROVIDER=fallback
 ```
 
-Get your API key at: https://aistudio.google.com/app/apikey
+Get your API keys:
+- Gemini: https://aistudio.google.com/app/apikey
+- GLM (Zhipu AI): https://open.bigmodel.cn/
 
 5. Start the development server:
 ```bash

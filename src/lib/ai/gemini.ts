@@ -1,6 +1,10 @@
 /**
  * Gemini AI API client
  *
+ * @deprecated This file is deprecated. Use `src/lib/ai/providers/gemini.ts` instead.
+ * This file is kept for backward compatibility but will be removed in a future version.
+ * Please update imports to use `GeminiProvider` from `@/lib/ai/providers/gemini`.
+ *
  * Server-side only - handles communication with Google's Gemini API
  */
 
@@ -27,7 +31,7 @@ function getGeminiClient() {
 export function getChatModel() {
   const client = getGeminiClient();
   return client.getGenerativeModel({
-    model: 'gemini-1.5-pro',
+    model: 'gemini-2.5-flash',
     systemInstruction: PAGE_AWARE_CHAT_PROMPT,
   });
 }
@@ -38,7 +42,7 @@ export function getChatModel() {
 export function getSearchModel() {
   const client = getGeminiClient();
   return client.getGenerativeModel({
-    model: 'gemini-1.5-pro',
+    model: 'gemini-2.5-flash',
     systemInstruction: SEARCH_RANK_PROMPT,
   });
 }

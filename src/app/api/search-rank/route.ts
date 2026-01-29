@@ -3,7 +3,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { generateSearchRanking } from '@/lib/ai/gemini';
+import { getAIProvider } from '@/lib/ai/provider';
 import { formatSearchRankRequest } from '@/lib/ai/prompts';
 import type { SearchRankRequest, SearchRankResponse, ApiError } from '@/types/api';
 
@@ -38,8 +38,9 @@ export async function POST(request: NextRequest) {
     // Format the prompt
     const prompt = formatSearchRankRequest(query, candidates);
 
-    // Generate ranking
-    const response = await generateSearchRanking(prompt);
+    // Get AI provider and generate ranking
+    const aiProvider = getAIProvider();
+    const response = await aiProvider.generateSearchRanking(prompt);
 
     // Parse LLM response to extract rankings
     let rankedResults: SearchRankResponse['rankedResults'] = [];

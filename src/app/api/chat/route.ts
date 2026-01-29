@@ -5,10 +5,11 @@
  */
 
 import { NextRequest } from 'next/server';
-import { generateChatResponse, generateChatResponseStream } from '@/lib/ai/gemini';
+import { getAIProvider } from '@/lib/ai/provider';
 import { formatUserMessage } from '@/lib/ai/prompts';
 import type { ChatRequest, ApiError } from '@/types/api';
 import { streamResponse, jsonResponse } from '@/lib/api/streaming';
+import type { ConversationMessage } from '@/lib/ai/types';
 
 export const runtime = 'nodejs';
 
@@ -110,22 +111,25 @@ export async function POST(request: NextRequest) {
     // Format the prompt
     const prompt = formatUserMessage(message, pageContext, currentPage);
 
-    // Convert conversation history to Gemini format
-    const geminiHistory = conversationHistory?.map((msg) => ({
-      role: (msg.role === 'user' ? 'user' : 'model') as 'user' | 'model',
-      parts: msg.content,
+    // Convert conversation history to provider format
+    const history: ConversationMessage[] | undefined = conversationHistory?.map((msg) => ({
+      role: msg.role === 'user' ? 'user' : 'model', // Map 'assistant' to 'model' for Gemini compatibility
+      content: msg.content,
     }));
+
+    // Get AI provider
+    const aiProvider = getAIProvider();
 
     // Generate response (streaming or non-streaming)
     if (stream) {
       // Stream the response
-      const stream = await generateChatResponseStream(prompt, geminiHistory);
+      const responseStream = aiProvider.generateChatResponseStream(prompt, history);
 
-      return streamResponse(stream, requestId);
+      return streamResponse(responseStream, requestId);
     }
 
     // Non-streaming response
-    const response = await generateChatResponse(prompt, geminiHistory);
+    const response = await aiProvider.generateChatResponse(prompt, history);
 
     // Extract page references from response
     const pageReferences: number[] = [];

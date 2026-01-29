@@ -6,12 +6,13 @@
  * System prompt for page-aware chat
  * Optimized for token efficiency (~50 tokens vs ~100)
  */
-export const PAGE_AWARE_CHAT_PROMPT = `You help users understand PDFs using ONLY provided context.
+export const PAGE_AWARE_CHAT_PROMPT = `You help users understand PDFs and answer their questions.
 RULES:
-1. Cite page numbers: "On page 5..."
-2. Say "not found in context" if answer unavailable
-3. Be concise
-4. Use bullet/numbered lists for clarity`;
+1. When answering from the PDF context, cite page numbers: "On page 5..."
+2. If the PDF context contains relevant information, prioritize it in your answer
+3. If the PDF doesn't contain the answer, provide a helpful response using your general knowledge
+4. Be concise
+5. Use bullet/numbered lists for clarity`;
 
 /**
  * System prompt for search ranking

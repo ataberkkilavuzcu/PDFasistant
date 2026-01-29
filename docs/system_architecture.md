@@ -115,7 +115,7 @@ No PDF files or full documents are ever stored server-side.
 
 ## 6. AI Integration
 
-* **Primary Model:** Gemini 1.5 Pro
+* **Primary Model:** Gemini 2.5 Flash
 * Context-limited prompts to reduce token usage
 * Page references injected via structured prompting
 
