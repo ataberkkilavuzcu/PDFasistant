@@ -651,16 +651,17 @@ function PDFViewerImpl({
               const charsIntoItem = Math.max(0, overlapStart - itemStart);
               const matchLengthInItem = overlapEnd - overlapStart;
 
-              // FIX: Use the PDF's own width measurements for accurate highlighting
-              // The itemData.width is the actual width of this text item as reported by PDF.js
-              // We calculate proportional widths based on this to match the actual PDF rendering
+              // Use the PDF's own width measurements for accurate highlighting
               const totalCharsInItem = itemData.text.length;
-              const charWidth = itemData.width / totalCharsInItem;
+              // Guard against zero-width items or single-char division issues
+              const itemWidth = Math.max(itemData.width, totalCharsInItem * itemData.height * 0.5);
+              const charWidth = totalCharsInItem > 0 ? itemWidth / totalCharsInItem : itemData.height * 0.5;
 
-              // Calculate offset and match width using the PDF's measurement
-              // This works because PDF.js already accounts for the actual font used
-              const offsetX = charsIntoItem * charWidth;
-              const matchWidth = matchLengthInItem * charWidth;
+              // Calculate offset and match width with a minimum per-character width
+              const minCharWidth = itemData.height * 0.3;
+              const effectiveCharWidth = Math.max(charWidth, minCharWidth);
+              const offsetX = charsIntoItem * effectiveCharWidth;
+              const matchWidth = Math.max(matchLengthInItem * effectiveCharWidth, minCharWidth);
 
               matchItems.push({
                 x: itemData.x + offsetX,

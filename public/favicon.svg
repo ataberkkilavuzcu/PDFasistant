@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981"/>
+      <stop offset="100%" style="stop-color:#14b8a6"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <g fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Document icon -->
+    <path d="M20 12h14l10 10v30a2 2 0 0 1-2 2H20a2 2 0 0 1-2-2V14a2 2 0 0 1 2-2z"/>
+    <polyline points="34 12 34 22 44 22"/>
+    <!-- Chat bubble indicator -->
+    <circle cx="46" cy="44" r="12" fill="#fff" stroke="none" opacity="0.2"/>
+    <path d="M40 41h12M40 47h8" stroke="#fff" stroke-width="2"/>
+  </g>
+</svg>
+

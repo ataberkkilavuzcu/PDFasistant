@@ -235,10 +235,27 @@ export function usePDF(): UsePDFReturn {
    * Save a document incrementally as pages are extracted
    * This allows users to see progress and start viewing sooner
    * Returns the document ID on first call, and updates on subsequent calls
+   * Implements deduplication: if a PDF with the same content already exists,
+   * returns the existing document ID instead of creating a duplicate.
    */
   const saveDocumentStreaming = useCallback(
     async (metadata: PDFMetadata, pages: PDFPage[], pdfBlob?: Blob, documentId?: string): Promise<string> => {
       try {
+        // Deduplication check on first save (when no documentId yet)
+        if (!documentId && pdfBlob) {
+          const contentHash = await calculateFileHash(pdfBlob);
+          const existing = await db.documents.where('contentHash').equals(contentHash).first();
+          if (existing) {
+            console.log(`Duplicate detected, reusing existing document: ${existing.id}`);
+            setState({
+              document: existing,
+              isLoading: false,
+              error: null,
+            });
+            return existing.id;
+          }
+        }
+
         const id = documentId || generateDocumentId();
         const doc = createPDFDocument(id, metadata, pages);
 

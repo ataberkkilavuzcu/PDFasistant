@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import type { DocumentSummary } from '@/hooks/usePDF';
@@ -10,16 +10,21 @@ interface DocumentListProps {
   documents: DocumentSummary[];
   lastOpenedDocumentId: string | null;
   onDocumentDeleted: (id: string) => void;
+  onDocumentRenamed?: (id: string, newTitle: string) => void;
 }
 
 export function DocumentList({
   documents,
   lastOpenedDocumentId,
   onDocumentDeleted,
+  onDocumentRenamed,
 }: DocumentListProps) {
   const router = useRouter();
-  const { deleteDocument } = usePDF();
+  const { deleteDocument, updateDocument } = usePDF();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   const handleOpenDocument = useCallback(
     (id: string) => {
@@ -45,6 +50,44 @@ export function DocumentList({
     },
     [deleteDocument, deletingId, onDocumentDeleted]
   );
+
+  const handleStartRename = useCallback((e: React.MouseEvent, doc: DocumentSummary) => {
+    e.stopPropagation();
+    setEditingId(doc.id);
+    setEditTitle(doc.metadata.title);
+  }, []);
+
+  const handleSaveRename = useCallback(async (id: string) => {
+    const trimmed = editTitle.trim();
+    if (!trimmed || trimmed === documents.find(d => d.id === id)?.metadata.title) {
+      setEditingId(null);
+      return;
+    }
+    try {
+      await updateDocument(id, { metadata: { title: trimmed } as never });
+      onDocumentRenamed?.(id, trimmed);
+    } catch (err) {
+      console.error('Failed to rename:', err);
+    }
+    setEditingId(null);
+  }, [editTitle, documents, updateDocument, onDocumentRenamed]);
+
+  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent, id: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSaveRename(id);
+    } else if (e.key === 'Escape') {
+      setEditingId(null);
+    }
+  }, [handleSaveRename]);
+
+  // Focus the input when editing starts
+  useEffect(() => {
+    if (editingId && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingId]);
 
   const formatFileSize = (bytes?: number) => {
     if (!bytes) return '';
@@ -112,10 +155,26 @@ export function DocumentList({
                 {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-medium text-white truncate group-hover:text-emerald-50 transition-colors">
-                      {doc.metadata.title}
-                    </h3>
-                    {isLastOpened && (
+                    {editingId === doc.id ? (
+                      <input
+                        ref={editInputRef}
+                        value={editTitle}
+                        onChange={(e) => setEditTitle(e.target.value)}
+                        onBlur={() => handleSaveRename(doc.id)}
+                        onKeyDown={(e) => handleRenameKeyDown(e, doc.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-sm font-medium text-white bg-white/10 border border-emerald-500/30 rounded px-2 py-0.5 w-full outline-none focus:border-emerald-500/60"
+                      />
+                    ) : (
+                      <h3
+                        className="text-sm font-medium text-white truncate group-hover:text-emerald-50 transition-colors cursor-text"
+                        onDoubleClick={(e) => handleStartRename(e, doc)}
+                        title="Double-click to rename"
+                      >
+                        {doc.metadata.title}
+                      </h3>
+                    )}
+                    {isLastOpened && editingId !== doc.id && (
                       <span className="flex-shrink-0 px-1.5 py-0.5 text-[10px] font-medium bg-emerald-500/10 text-emerald-400 rounded border border-emerald-500/20">
                         LAST
                       </span>
@@ -138,6 +197,17 @@ export function DocumentList({
                     </span>
                   </div>
                 </div>
+
+                {/* Rename Button */}
+                <button
+                  onClick={(e) => handleStartRename(e, doc)}
+                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-white/10 text-gray-500 hover:text-white transition-all duration-200"
+                  title="Rename document"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
 
                 {/* Delete Button */}
                 <button

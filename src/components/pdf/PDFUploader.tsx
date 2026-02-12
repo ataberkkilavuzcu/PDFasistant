@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 /** PDF magic bytes signature */
 const PDF_MAGIC_BYTES = [0x25, 0x50, 0x44, 0x46]; // %PDF
@@ -233,17 +234,22 @@ export function PDFUploader({
 
   return (
     <div className="w-full">
-      <div
+      <motion.div
         onClick={handleClick}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
+        animate={{
+          scale: isDragging ? 1.02 : 1,
+          borderColor: isDragging ? 'rgba(16, 185, 129, 0.6)' : 'rgba(64, 64, 64, 1)',
+        }}
+        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
         className={`
           relative border-2 border-dashed rounded-2xl p-12 md:p-16 text-center cursor-pointer
-          transition-all duration-300 ease-out group
+          transition-colors duration-300 ease-out group
           ${isDragging
-            ? 'border-primary-500 bg-primary-500/5 scale-[1.01] premium-shadow-lg'
-            : 'border-neutral-700 hover:border-primary-500/50 hover:bg-neutral-800/30 hover:premium-shadow'
+            ? 'bg-primary-500/5 premium-shadow-lg'
+            : 'hover:border-primary-500/50 hover:bg-neutral-800/30 hover:premium-shadow'
           }
           ${isLoading || isValidating ? 'opacity-50 pointer-events-none' : ''}
         `}
@@ -256,6 +262,19 @@ export function PDFUploader({
           className="hidden"
         />
 
+        {/* Animated ring pulse when dragging */}
+        <AnimatePresence>
+          {isDragging && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="absolute inset-0 rounded-2xl border-2 border-emerald-500/30 pointer-events-none"
+              style={{ boxShadow: '0 0 30px rgba(16,185,129,0.15) inset' }}
+            />
+          )}
+        </AnimatePresence>
+
         {isLoading || isValidating ? (
           <div className="flex flex-col items-center gap-4">
             <div className="w-16 h-16 border-4 border-neutral-700 border-t-primary-500 rounded-full animate-spin"></div>
@@ -266,12 +285,19 @@ export function PDFUploader({
         ) : (
           <>
             <div className="flex flex-col items-center gap-6 relative z-10">
-              <div className={`
-                w-20 h-20 rounded-2xl flex items-center justify-center
-                bg-gradient-to-br from-primary-500/20 to-accent-500/10
-                border border-neutral-700 shadow-lg
-                group-hover:scale-110 group-hover:border-primary-500/50 transition-all duration-300
-              `}>
+              <motion.div
+                animate={{
+                  y: isDragging ? -8 : 0,
+                  scale: isDragging ? 1.1 : 1,
+                }}
+                transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+                className={`
+                  w-20 h-20 rounded-2xl flex items-center justify-center
+                  bg-gradient-to-br from-primary-500/20 to-accent-500/10
+                  border border-neutral-700 shadow-lg
+                  group-hover:scale-110 group-hover:border-primary-500/50 transition-all duration-300
+                `}
+              >
                 <svg
                   className="w-10 h-10 text-primary-400 transition-colors"
                   fill="none"
@@ -285,10 +311,10 @@ export function PDFUploader({
                     d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
                   />
                 </svg>
-              </div>
+              </motion.div>
               <div className="space-y-3">
                 <p className="text-xl font-semibold text-neutral-100 group-hover:text-neutral-50 transition-colors">
-                  Drop your PDF here
+                  {isDragging ? 'Release to upload' : 'Drop your PDF here'}
                 </p>
                 <p className="text-sm text-neutral-400 group-hover:text-neutral-300 transition-colors">
                   or click to browse
@@ -306,16 +332,23 @@ export function PDFUploader({
             <div className="absolute inset-0 bg-gradient-to-tr from-primary-500/0 via-primary-500/[0.02] to-accent-500/0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl pointer-events-none"></div>
           </>
         )}
-      </div>
+      </motion.div>
 
-      {error && (
-        <div className="mt-4 flex items-center justify-center gap-2 text-sm text-red-400 animate-slide-down">
-          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span>{error}</span>
-        </div>
-      )}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="mt-4 flex items-center justify-center gap-2 text-sm text-red-400"
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>{error}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
