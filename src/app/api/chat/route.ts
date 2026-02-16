@@ -104,11 +104,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Extract current page from context (assumes format includes page numbers)
-    const pageMatch = pageContext.match(/\[Page (\d+)\]/);
-    const currentPage = pageMatch ? parseInt(pageMatch[1], 10) : 1;
+    // Extract current page from context
+    // First try to find the "(currently viewing)" marker from full-document context,
+    // then fall back to the first [Page N] match for backward compatibility
+    const viewingMatch = pageContext.match(/\[Page (\d+) \(currently viewing\)\]/);
+    const fallbackMatch = pageContext.match(/\[Page (\d+)\]/);
+    const currentPage = viewingMatch
+      ? parseInt(viewingMatch[1], 10)
+      : fallbackMatch
+        ? parseInt(fallbackMatch[1], 10)
+        : 1;
 
     // Format the prompt
+    // Note: The AI will answer even if pageContext doesn't contain the requested information.
+    // The system prompt ensures the AI uses general knowledge when PDF context is insufficient.
     const prompt = formatUserMessage(message, pageContext, currentPage);
 
     // Convert conversation history to provider format

@@ -44,11 +44,30 @@ export function createPageContext(
 }
 
 /**
- * Format page context as a string for AI prompts
+ * Format page context as a string for AI prompts (windowed, ±N pages)
  */
 export function formatContextForPrompt(context: PageContext): string {
   return context.contextPages
     .map((page) => `[Page ${page.pageNumber}]\n${page.text}`)
+    .join('\n\n---\n\n');
+}
+
+/**
+ * Format the FULL document text for AI chat prompts.
+ * Sends ALL pages so the AI can find information anywhere in the PDF,
+ * with a marker indicating which page the user is currently viewing.
+ */
+export function formatFullDocumentContext(
+  pages: PDFPage[],
+  currentPage: number
+): string {
+  if (pages.length === 0) return '';
+
+  return pages
+    .map((page) => {
+      const marker = page.pageNumber === currentPage ? ' (currently viewing)' : '';
+      return `[Page ${page.pageNumber}${marker}]\n${page.text}`;
+    })
     .join('\n\n---\n\n');
 }
 

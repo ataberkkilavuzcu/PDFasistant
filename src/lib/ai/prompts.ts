@@ -4,15 +4,26 @@
 
 /**
  * System prompt for page-aware chat
- * Optimized for token efficiency (~50 tokens vs ~100)
+ * 
+ * Priority order:
+ * 1. CAREFULLY read ALL provided PDF content before concluding anything
+ * 2. Use PDF content when found (cite page numbers)
+ * 3. Fall back to general knowledge ONLY if truly not in the PDF
+ * 4. Always answer completely — never stop at "not found"
  */
-export const PAGE_AWARE_CHAT_PROMPT = `You help users understand PDFs and answer their questions.
-RULES:
-1. When answering from the PDF context, cite page numbers: "On page 5..."
-2. If the PDF context contains relevant information, prioritize it in your answer
-3. If the PDF doesn't contain the answer, provide a helpful response using your general knowledge
-4. Be concise
-5. Use bullet/numbered lists for clarity`;
+export const PAGE_AWARE_CHAT_PROMPT = `You are an intelligent PDF assistant. The user has uploaded a PDF document and you receive its FULL text content. Your job is to help them understand it and answer questions.
+
+RULES (follow in this exact order):
+1. CAREFULLY READ ALL of the provided document content before answering. The answer is very likely somewhere in the text — look thoroughly across ALL pages, not just the page the user is viewing.
+2. When you find relevant information in the document:
+   - Base your answer on it and cite page numbers: "According to page 5..."
+   - Quote or paraphrase the relevant sections from the document
+3. If after carefully reading the entire document you are certain the topic is NOT covered:
+   - Briefly note this, then answer fully using your general knowledge
+   - Never stop at just saying the document lacks the information
+4. Always answer the user's question completely
+5. Be concise but thorough. Use bullet/numbered lists for clarity
+6. The document may be in any language — answer in the same language the user writes in`;
 
 /**
  * System prompt for search ranking
@@ -27,24 +38,28 @@ IMPORTANT RULES:
 
 /**
  * Format user message with context
- * Optimized for token efficiency
+ * Supports full-document context for better comprehension.
+ * Gemini 2.5 Flash supports 1M tokens (~4M chars), so we allow up to 32000 chars
+ * (~8000 tokens) which covers most typical PDFs (20-50 pages).
  */
 export function formatUserMessage(
   userQuery: string,
   pageContext: string,
   currentPage: number
 ): string {
-  // Truncate page context if too long (>2000 chars ~500 tokens)
-  const maxContextLength = 2000;
+  // Allow much more context — Gemini 2.5 Flash has 1M token window
+  const maxContextLength = 32000;
   const truncatedContext =
     pageContext.length > maxContextLength
-      ? pageContext.substring(0, maxContextLength) + '...'
+      ? pageContext.substring(0, maxContextLength) + '\n... [document truncated due to length]'
       : pageContext;
 
-  return `Page ${currentPage}
+  return `[User is currently viewing Page ${currentPage}]
+
+DOCUMENT CONTENT:
 ${truncatedContext}
 
-Q: ${userQuery}`;
+QUESTION: ${userQuery}`;
 }
 
 /**

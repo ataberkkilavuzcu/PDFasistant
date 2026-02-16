@@ -25,6 +25,7 @@ import { useDebouncedChat } from '@/hooks/useDebouncedChat';
 import { useDocumentStore } from '@/stores/documentStore';
 import { searchPages } from '@/lib/search/keyword';
 import { rankSearchResults } from '@/lib/api/search-client';
+import { formatFullDocumentContext } from '@/lib/pdf/context';
 import type { SearchResult } from '@/lib/search/keyword';
 import type { ChatMessage } from '@/types/chat';
 
@@ -81,9 +82,14 @@ function ViewerContent() {
   const {
     currentPage,
     totalPages,
-    contextString,
     setCurrentPage,
   } = usePageContext(pages);
+
+  // Build full-document context for chat (all pages, not just ±2)
+  const fullDocumentContext = useMemo(
+    () => formatFullDocumentContext(pages, currentPage),
+    [pages, currentPage]
+  );
 
   // Load document if ID is provided
   useEffect(() => {
@@ -177,18 +183,18 @@ function ViewerContent() {
 
   const handleSendMessage = useCallback(
     async (message: string) => {
-      if (!documentId || !contextString) return;
-      await sendMessage(documentId, message, contextString, currentPage);
+      if (!documentId || !fullDocumentContext) return;
+      await sendMessage(documentId, message, fullDocumentContext, currentPage);
     },
-    [documentId, contextString, currentPage, sendMessage]
+    [documentId, fullDocumentContext, currentPage, sendMessage]
   );
 
   const handleEditMessage = useCallback(
     async (messageId: string, newContent: string) => {
-      if (!contextString) return;
-      await editMessage(messageId, newContent, contextString, currentPage);
+      if (!fullDocumentContext) return;
+      await editMessage(messageId, newContent, fullDocumentContext, currentPage);
     },
-    [contextString, currentPage, editMessage]
+    [fullDocumentContext, currentPage, editMessage]
   );
 
   const handleDeleteMessage = useCallback(
