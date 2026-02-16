@@ -2,6 +2,10 @@
 
 Your intelligent PDF reading companion. Upload a document and get instant, comprehensive answers to your questions with AI-powered assistance that understands your entire document.
 
+**🌐 [Try it live →](https://pdfasistantataberk.vercel.app/)**
+
+Want to test it out? Visit the live demo above and start asking questions about your PDFs right away!
+
 ## Features
 
 - **Intelligent Chat**: Ask questions and get answers based on the FULL document content. The AI can find information anywhere in your PDF, not just the current page
