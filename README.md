@@ -1,11 +1,11 @@
 # PDFasistant
 
-Your intelligent PDF reading companion. Upload a document and get instant, page-aware answers to your questions with AI-powered assistance.
+Your intelligent PDF reading companion. Upload a document and get instant, comprehensive answers to your questions with AI-powered assistance that understands your entire document.
 
 ## Features
 
-- **Page-Aware Chat**: Ask questions and get answers with context from your current reading position
-- **Smart Search**: Find information across your entire document with intelligent keyword matching
+- **Intelligent Chat**: Ask questions and get answers based on the FULL document content. The AI can find information anywhere in your PDF, not just the current page
+- **Smart Search**: Find information across your entire document with intelligent keyword matching and LLM-assisted ranking
 - **Privacy First**: Your documents stay in your browser. PDFs are never stored on servers
 
 ## Tech Stack
@@ -13,7 +13,7 @@ Your intelligent PDF reading companion. Upload a document and get instant, page-
 - **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS
 - **PDF Rendering**: react-pdf, pdfjs-dist
 - **Local Storage**: IndexedDB via Dexie.js
-- **AI**: Google Gemini 1.5 Pro
+- **AI**: Google Gemini 2.5 Flash (with GLM fallback support)
 
 ## Getting Started
 
@@ -70,7 +70,7 @@ pnpm dev
 src/
 ├── app/                    # Next.js App Router
 │   ├── api/               # API routes
-│   │   ├── chat/          # Page-aware chat endpoint
+│   │   ├── chat/          # Document-aware chat endpoint
 │   │   └── search-rank/   # LLM search ranking endpoint
 │   ├── viewer/            # PDF viewer page
 │   ├── layout.tsx         # Root layout
@@ -97,7 +97,7 @@ PDFasistant uses a client-centric architecture:
 - **Client-side**: PDF processing, text extraction, local storage, and UI
 - **Server-side**: Secure API key handling and AI API orchestration
 
-PDFs never leave your browser. Only relevant text snippets are sent to the AI for processing.
+PDFs never leave your browser. The full document text (up to 32K characters) is sent to the AI for comprehensive understanding, allowing it to find information anywhere in your PDF.
 
 ## Scripts
 
